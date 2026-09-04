@@ -47,3 +47,15 @@ test("buildChildEnv scrubs, increments depth, and tags the parent", () => {
   assert.equal(child[DEPTH_ENV], "1");
   assert.equal(child[PARENT_ENV], "codex");
 });
+
+test("detectSandbox recognises Codex's sandbox markers", async () => {
+  const { detectSandbox } = await import("../plugins/claude/scripts/lib/env.mjs");
+  assert.deepEqual(detectSandbox({ PATH: "/usr/bin" }), { sandboxed: false, networkDisabled: false, reason: null });
+  const blocked = detectSandbox({ CODEX_SANDBOX: "seatbelt", CODEX_SANDBOX_NETWORK_DISABLED: "1" });
+  assert.equal(blocked.networkDisabled, true);
+  assert.match(blocked.reason, /escalated permissions/);
+  assert.match(blocked.reason, /network_access = true/);
+  const allowed = detectSandbox({ CODEX_SANDBOX: "seatbelt" });
+  assert.equal(allowed.sandboxed, true);
+  assert.equal(allowed.networkDisabled, false);
+});

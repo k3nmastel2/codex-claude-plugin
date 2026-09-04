@@ -91,7 +91,8 @@ export function renderSetupReport(report) {
     `- node: ${report.node.available ? report.node.detail : `missing (${report.node.detail})`}`,
     `- claude: ${report.claude.available ? report.claude.detail : `missing (${report.claude.detail})`}`,
     `- login: ${report.auth.loggedIn ? report.auth.detail : `not logged in (${report.auth.detail})`}`,
-    `- nesting: ${report.nesting.nested ? `blocked — ${report.nesting.reason}` : "clear"}`
+    `- nesting: ${report.nesting.nested ? `blocked — ${report.nesting.reason}` : "clear"}`,
+    `- sandbox: ${report.sandbox?.networkDisabled ? "Codex sandbox with network disabled" : report.sandbox?.sandboxed ? "Codex sandbox (network allowed)" : "none detected"}`
   ];
   if (report.nextSteps?.length) {
     lines.push("", "Next steps:");

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Setup help
+    url: https://github.com/k3nmastel2/codex-claude-plugin#troubleshooting
+    about: Read the troubleshooting section first; it covers login, sandbox, and nesting errors.

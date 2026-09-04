@@ -86,3 +86,13 @@ test("resolveWindowsClaude prefers .exe, then unwraps npm .cmd shims, else null"
   assert.deepEqual(cmd, { command: process.execPath, args: [cli], shell: false });
   assert.equal(resolveWindowsClaude("", () => false), null);
 });
+
+test("resolveWindowsClaude reads the npm shim to find the real script", () => {
+  const shimPath = "C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd";
+  const target = "C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.js";
+  const shim = '@ECHO off\r\n...\r\nendLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.js" %*\r\n';
+  const resolved = resolveWindowsClaude(`${shimPath}\r\n`, (p) => p === target, () => shim);
+  assert.deepEqual(resolved, { command: process.execPath, args: [target], shell: false });
+  const unreadable = resolveWindowsClaude(`${shimPath}\r\n`, () => false, () => { throw new Error("nope"); });
+  assert.deepEqual(unreadable, { command: shimPath, args: [], shell: true });
+});

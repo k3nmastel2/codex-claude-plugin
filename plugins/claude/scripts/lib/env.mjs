@@ -58,3 +58,21 @@ export function buildChildEnv(env) {
   child[PARENT_ENV] = "codex";
   return child;
 }
+
+export const SANDBOX_ENV = "CODEX_SANDBOX";
+export const SANDBOX_NETWORK_ENV = "CODEX_SANDBOX_NETWORK_DISABLED";
+
+// Codex marks commands it runs inside its sandbox. With network disabled, Claude cannot
+// reach its API and, on macOS, cannot read the login keychain either.
+export function detectSandbox(env) {
+  const sandbox = String(env[SANDBOX_ENV] ?? "").trim();
+  const networkDisabled = String(env[SANDBOX_NETWORK_ENV] ?? "") === "1";
+  if (!sandbox && !networkDisabled) {
+    return { sandboxed: false, networkDisabled: false, reason: null };
+  }
+  const label = sandbox ? `Codex's ${sandbox} sandbox` : "Codex's sandbox";
+  const reason = networkDisabled
+    ? `This command is running inside ${label} with network access disabled (${SANDBOX_NETWORK_ENV}=1), so Claude cannot reach its API or your login. Ask Codex to re-run it with escalated permissions, outside the sandbox, or set network_access = true under [sandbox_workspace_write] in ~/.codex/config.toml.`
+    : `This command is running inside ${label}. If Claude reports it is not logged in, re-run it with escalated permissions.`;
+  return { sandboxed: true, networkDisabled, reason };
+}

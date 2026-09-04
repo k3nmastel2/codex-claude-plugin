@@ -10,7 +10,7 @@ test("every skill has frontmatter, a companion reference, verbatim rule, and ope
   for (const name of SKILLS) {
     const dir = path.join(ROOT, "plugins", "claude", "skills", name);
     const skill = fs.readFileSync(path.join(dir, "SKILL.md"), "utf8");
-    assert.match(skill, new RegExp(`^---\\nname: ${name}\\ndescription: .+\\n---`), name);
+    assert.match(skill, new RegExp(`^---\\r?\\nname: ${name}\\r?\\ndescription: .+\\r?\\n---`), name);
     assert.match(skill, /\.\.\/\.\.\/scripts\/claude-companion\.mjs/, name);
     assert.match(skill, /verbatim/, name);
     const yaml = fs.readFileSync(path.join(dir, "agents", "openai.yaml"), "utf8");

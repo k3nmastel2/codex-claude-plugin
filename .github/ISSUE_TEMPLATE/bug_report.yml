@@ -1,0 +1,32 @@
+name: Bug report
+description: Something in the plugin or companion did not behave as documented
+labels: [bug]
+body:
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `codex --version`, `claude --version`, `node --version`, and your OS
+      placeholder: codex-cli 0.145.0 · 2.1.238 (Claude Code) · v22.x · macOS 15 / Windows 11
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Output of `$claude-setup`
+      description: Paste the full report. Remove anything you consider private.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: What you ran and what happened
+      description: The exact `$claude-…` request or companion command, and the full output
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected

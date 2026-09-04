@@ -70,6 +70,13 @@ export function loadState(workspaceRoot, env) {
   }
 }
 
+// Write through a temp file and rename so a concurrent reader never sees a half-written JSON file.
+function writeFileAtomic(file, content) {
+  const tmp = `${file}.${process.pid}.${Date.now().toString(36)}.tmp`;
+  fs.writeFileSync(tmp, content, "utf8");
+  fs.renameSync(tmp, file);
+}
+
 function removeIfExists(file) {
   if (file && fs.existsSync(file)) fs.rmSync(file, { force: true });
 }
@@ -87,7 +94,7 @@ export function saveState(workspaceRoot, state, env) {
     removeIfExists(resolveJobLogFile(workspaceRoot, job.id, env));
   }
   const next = { version: STATE_VERSION, lastSession: state.lastSession ?? null, jobs };
-  fs.writeFileSync(resolveStateFile(workspaceRoot, env), `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  writeFileAtomic(resolveStateFile(workspaceRoot, env), `${JSON.stringify(next, null, 2)}\n`);
   return next;
 }
 
@@ -130,7 +137,7 @@ export function getLastSession(workspaceRoot, env) {
 
 export function writeJobFile(workspaceRoot, jobId, data, env) {
   ensureStateDir(workspaceRoot, env);
-  fs.writeFileSync(resolveJobFile(workspaceRoot, jobId, env), `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  writeFileAtomic(resolveJobFile(workspaceRoot, jobId, env), `${JSON.stringify(data, null, 2)}\n`);
 }
 
 export function readJobFile(workspaceRoot, jobId, env) {

@@ -38,3 +38,7 @@ If the request reads like a follow-up ("continue", "keep going", "apply the top 
 - If the output says Claude is not installed or not logged in, tell the user to run `$claude-setup` and stop.
 - If the command exits non-zero, show its output and stop. Never invent an answer Claude did not give.
 - For a background job, tell the user to use `$claude-jobs` to check status or fetch the result.
+
+## Sandbox
+
+The companion needs network access (Claude's API) and the user's Claude login. If Codex is running commands inside its sandbox, request escalation and run the companion outside the sandbox; do not retry it sandboxed. Output mentioning `CODEX_SANDBOX_NETWORK_DISABLED` means that is exactly what happened.

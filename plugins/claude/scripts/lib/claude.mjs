@@ -12,14 +12,27 @@ export const READ_ONLY_DISALLOWED = "Edit,Write,MultiEdit,NotebookEdit";
 const PERMISSION_LEVELS = new Set(["read", "write", "full"]);
 const AUTH_PATTERN = /authenticat|oauth|not logged in|log in|login|api key|credential/i;
 
-export function resolveWindowsClaude(whereOutput, existsSync = fs.existsSync) {
+export function resolveWindowsClaude(whereOutput, existsSync = fs.existsSync, readFileSync = (file) => fs.readFileSync(file, "utf8")) {
   const candidates = String(whereOutput ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const exe = candidates.find((candidate) => candidate.toLowerCase().endsWith(".exe"));
   if (exe) return { command: exe, args: [], shell: false };
   const cmd = candidates.find((candidate) => candidate.toLowerCase().endsWith(".cmd"));
   if (cmd) {
-    const cliJs = path.win32.join(path.win32.dirname(cmd), "node_modules", "@anthropic-ai", "claude-code", "cli.js");
-    if (existsSync(cliJs)) return { command: process.execPath, args: [cliJs], shell: false };
+    // npm writes a cmd shim that ends in: "%_prog%"  "%dp0%\<relative path>.js" %*
+    // Run that script with node directly so long arguments never pass through cmd.exe.
+    const shimDir = path.win32.dirname(cmd);
+    let shim = "";
+    try {
+      shim = String(readFileSync(cmd));
+    } catch {
+      shim = "";
+    }
+    const target = shim.match(/"%dp0%\\([^"]+\.[cm]?js)"/i);
+    const scripts = [];
+    if (target) scripts.push(path.win32.join(shimDir, target[1]));
+    scripts.push(path.win32.join(shimDir, "node_modules", "@anthropic-ai", "claude-code", "cli.js"));
+    const cliJs = scripts.find((candidate) => existsSync(candidate));
+    if (cliJs) return { command: process.execPath, args: [cliJs], shell: false };
     return { command: cmd, args: [], shell: true };
   }
   return null;

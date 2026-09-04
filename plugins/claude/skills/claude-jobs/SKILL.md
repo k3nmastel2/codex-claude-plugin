@@ -26,3 +26,7 @@ node "<plugin-root>/scripts/claude-companion.mjs" cancel [job-id]
 - Return stdout verbatim; do not summarise a result or reorder findings.
 - Do not poll in a loop. Run the command once per user request.
 - If the output says no job was found, show it and stop.
+
+## Sandbox
+
+The companion needs network access (Claude's API) and the user's Claude login. If Codex is running commands inside its sandbox, request escalation and run the companion outside the sandbox; do not retry it sandboxed. Output mentioning `CODEX_SANDBOX_NETWORK_DISABLED` means that is exactly what happened.

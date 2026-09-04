@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a capability, flag, or skill
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The workflow between Codex and Claude you want, in your own words
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: A flag, a skill, a behaviour. Rough is fine.
+  - type: checkboxes
+    id: platforms
+    attributes:
+      label: Platforms it must work on
+      options:
+        - label: macOS
+        - label: Windows
+        - label: Linux

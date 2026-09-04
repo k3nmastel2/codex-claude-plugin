@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14121f"/>
+      <stop offset="1" stop-color="#1f1a33"/>
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+
+  <text x="64" y="78" font-family="-apple-system, 'Segoe UI', Inter, Helvetica, Arial, sans-serif" font-size="40" font-weight="700" fill="#ffffff">Use Claude Code from inside Codex</text>
+  <text x="64" y="112" font-family="-apple-system, 'Segoe UI', Inter, Helvetica, Arial, sans-serif" font-size="20" fill="#b9b3d6">Four Codex skills that drive the claude CLI you already have. No API key. Read-only by default.</text>
+
+  <g transform="translate(64 150)" filter="url(#shadow)">
+    <rect width="1152" height="430" rx="14" fill="#0f0e17" stroke="#2c2744"/>
+    <rect width="1152" height="36" rx="14" fill="#1a1828"/>
+    <rect y="22" width="1152" height="14" fill="#1a1828"/>
+    <circle cx="22" cy="18" r="6" fill="#ff5f57"/>
+    <circle cx="42" cy="18" r="6" fill="#febc2e"/>
+    <circle cx="62" cy="18" r="6" fill="#28c840"/>
+    <text x="576" y="23" text-anchor="middle" font-size="13" fill="#8d87ad">codex — my-repo</text>
+
+    <g font-size="17">
+      <text x="28" y="76" fill="#28c840">›</text>
+      <text x="48" y="76" fill="#e8e6f2">$claude-task explain how login sessions are refreshed, read-only</text>
+
+      <text x="28" y="118" fill="#8d87ad">•</text>
+      <text x="48" y="118" fill="#8d87ad">Running </text>
+      <text x="126" y="118" fill="#c9a6ff">claude -p</text>
+      <text x="218" y="118" fill="#8d87ad"> via claude-companion (permission: read)…</text>
+
+      <text x="48" y="164" fill="#e8e6f2">Refresh happens in </text>
+      <text x="225" y="164" fill="#7ee0ff">src/auth/session.ts:41</text>
+      <text x="440" y="164" fill="#e8e6f2">. Every request calls</text>
+      <text x="48" y="192" fill="#e8e6f2">ensureFresh(), which re-issues the token 60 s before expiry</text>
+      <text x="48" y="220" fill="#e8e6f2">and stores it through </text>
+      <text x="262" y="220" fill="#7ee0ff">SessionStore.save()</text>
+      <text x="454" y="220" fill="#e8e6f2">. One risk: the refresh</text>
+      <text x="48" y="248" fill="#e8e6f2">is not awaited on the logout path, so a stale token can be</text>
+      <text x="48" y="276" fill="#e8e6f2">written after sign-out (</text>
+      <text x="282" y="276" fill="#7ee0ff">logout.ts:18</text>
+      <text x="400" y="276" fill="#e8e6f2">).</text>
+
+      <text x="48" y="322" fill="#8d87ad">claude session 41ec7d2a · 6 turns · $0.08 · resume with --resume</text>
+
+      <text x="28" y="372" fill="#28c840">›</text>
+      <text x="48" y="372" fill="#e8e6f2">$claude-task --resume --write fix the logout race and add a test</text>
+      <text x="28" y="410" fill="#8d87ad">•</text>
+      <text x="48" y="410" fill="#8d87ad">Continuing session 41ec7d2a (permission: write)…</text>
+    </g>
+  </g>
+</svg>

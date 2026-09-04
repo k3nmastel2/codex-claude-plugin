@@ -32,3 +32,7 @@ The review always runs read-only. There is no flag to let it edit anything.
 - After presenting the findings, STOP. Never apply fixes, and do not offer to fix anything until the user chooses which findings to address.
 - If the output says the directory is not a git repository or no base branch was found, show it and ask the user for a `--base <ref>`.
 - If the output says Claude is not installed or not logged in, tell the user to run `$claude-setup` and stop.
+
+## Sandbox
+
+The companion needs network access (Claude's API) and the user's Claude login. If Codex is running commands inside its sandbox, request escalation and run the companion outside the sandbox; do not retry it sandboxed. Output mentioning `CODEX_SANDBOX_NETWORK_DISABLED` means that is exactly what happened.

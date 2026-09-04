@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { normalizeArgv, parseArgs } from "./lib/args.mjs";
 import { buildClaudeArgs, getClaudeAuthStatus, getClaudeAvailability } from "./lib/claude.mjs";
-import { detectNesting } from "./lib/env.mjs";
+import { detectNesting, detectSandbox } from "./lib/env.mjs";
 import { collectReviewContext, resolveReviewTarget } from "./lib/git.mjs";
 import {
   buildStatusSnapshot, cancelJob, createJob, excerpt, executeJob, resolveJobForResult, spawnBackgroundWorker
@@ -85,9 +85,16 @@ function parseIntOption(value, name) {
 
 function guardNesting(env, options, asJson) {
   const nesting = detectNesting(env, { allowNested: Boolean(options["allow-nested"]) });
-  if (!nesting.nested) return true;
-  emitFailure(asJson, failurePayload("nested", `${nesting.reason} Pass --allow-nested to override.`));
-  return false;
+  if (nesting.nested) {
+    emitFailure(asJson, failurePayload("nested", `${nesting.reason} Pass --allow-nested to override.`));
+    return false;
+  }
+  const sandbox = detectSandbox(env);
+  if (sandbox.networkDisabled) {
+    emitFailure(asJson, failurePayload("sandbox", sandbox.reason));
+    return false;
+  }
+  return true;
 }
 
 async function runOrLaunch({ workspaceRoot, env, asJson, kind, cwd, promptExcerpt, request, background, render }) {
@@ -112,6 +119,7 @@ async function commandSetup(argv) {
   const claude = getClaudeAvailability(env);
   const auth = claude.available ? getClaudeAuthStatus(env) : { loggedIn: false, detail: "claude not found" };
   const nesting = detectNesting(env);
+  const sandbox = detectSandbox(env);
   const nextSteps = [];
   if (!claude.available) {
     nextSteps.push("Install Claude Code (https://docs.claude.com/en/docs/claude-code/setup), for example `npm install -g @anthropic-ai/claude-code`, then re-run setup.");
@@ -119,7 +127,8 @@ async function commandSetup(argv) {
     nextSteps.push("Run `claude auth login` in your own terminal (or export ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN), then re-run setup.");
   }
   if (nesting.nested) nextSteps.push(`Nesting guard is active: ${nesting.reason}`);
-  const report = { ready: node.available && claude.available && auth.loggedIn && !nesting.nested, cwd, node, claude, auth, nesting, nextSteps };
+  if (sandbox.networkDisabled) nextSteps.push(sandbox.reason);
+  const report = { ready: node.available && claude.available && auth.loggedIn && !nesting.nested && !sandbox.networkDisabled, cwd, node, claude, auth, nesting, sandbox, nextSteps };
   emit(Boolean(options.json), report, renderSetupReport(report));
   if (!report.ready) process.exitCode = 1;
 }

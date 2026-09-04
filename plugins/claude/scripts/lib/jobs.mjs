@@ -91,16 +91,18 @@ export async function executeJob(workspaceRoot, jobId, env = process.env) {
   }
 
   const summary = failure ? failure.message.split(/\r?\n/)[0] : excerpt(payload.structuredOutput?.summary ?? payload.result, 120);
-  upsertJob(workspaceRoot, {
-    id: jobId,
+  const terminal = {
     status: failure ? "failed" : "succeeded",
     finishedAt: nowIso(),
     exitCode: run.status,
     sessionId: payload.sessionId,
     error: failure ? failure.message : null,
     summary
-  }, env);
-  writeJobFile(workspaceRoot, jobId, { ...stored, ...getJob(workspaceRoot, jobId, env), request, result: payload }, env);
+  };
+  // Persist the result before flipping the shared state to a terminal status, so anyone who
+  // observes "succeeded" in state.json can immediately read the result file.
+  writeJobFile(workspaceRoot, jobId, { ...stored, ...getJob(workspaceRoot, jobId, env), ...terminal, request, result: payload }, env);
+  upsertJob(workspaceRoot, { id: jobId, ...terminal }, env);
   return payload;
 }
 

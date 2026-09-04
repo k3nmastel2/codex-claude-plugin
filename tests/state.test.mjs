@@ -81,3 +81,15 @@ test("job files round-trip and generateJobId is unique-ish", () => {
   assert.match(generateJobId(), /^job-[0-9a-z]+-[0-9a-f]{4}$/);
   assert.notEqual(generateJobId(), generateJobId());
 });
+
+test("state and job files are written atomically with no temp files left behind", () => {
+  const env = withStateDir();
+  const ws = makeTempDir();
+  upsertJob(ws, { id: "job-atomic", kind: "task", status: "queued" }, env);
+  writeJobFile(ws, "job-atomic", { id: "job-atomic", request: { prompt: "p" } }, env);
+  const dir = resolveStateDir(ws, env);
+  const leftovers = fs.readdirSync(path.join(dir, "jobs")).filter((name) => name.endsWith(".tmp"));
+  assert.deepEqual(leftovers, []);
+  assert.deepEqual(fs.readdirSync(dir).filter((name) => name.endsWith(".tmp")), []);
+  assert.equal(readJobFile(ws, "job-atomic", env).request.prompt, "p");
+});

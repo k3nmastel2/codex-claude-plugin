@@ -148,3 +148,17 @@ test("usage errors exit 1", () => {
   assert.equal(empty.status, 1);
   assert.match(empty.stdout + empty.stderr, /prompt/i);
 });
+
+test("sandbox with network disabled is refused with the escalation hint", () => {
+  const env = envFor({ CODEX_SANDBOX: "seatbelt", CODEX_SANDBOX_NETWORK_DISABLED: "1" });
+  const task = cli(makeTempDir(), env, ["task", "hi"]);
+  assert.equal(task.status, 1);
+  assert.match(task.stdout, /escalated permissions/);
+  const setup = cli(makeTempDir(), env, ["setup", "--json"]);
+  assert.equal(setup.status, 1);
+  assert.equal(json(setup).ready, false);
+  assert.equal(json(setup).sandbox.networkDisabled, true);
+  assert.ok(json(setup).nextSteps.some((step) => /network_access = true/.test(step)));
+  const allowed = cli(makeTempDir(), envFor({ CODEX_SANDBOX: "seatbelt" }), ["task", "hi"]);
+  assert.equal(allowed.status, 0);
+});
