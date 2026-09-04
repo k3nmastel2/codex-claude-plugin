@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ROOT } from "./helpers.mjs";
 
-const SKILLS = ["claude-task", "claude-review", "claude-setup", "claude-jobs"];
+const SKILLS = ["claude", "claude-task", "claude-review", "claude-setup", "claude-jobs"];
 
 test("every skill has frontmatter, a companion reference, verbatim rule, and openai.yaml", () => {
   for (const name of SKILLS) {

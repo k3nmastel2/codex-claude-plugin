@@ -93,3 +93,19 @@ test("state and job files are written atomically with no temp files left behind"
   assert.deepEqual(fs.readdirSync(dir).filter((name) => name.endsWith(".tmp")), []);
   assert.equal(readJobFile(ws, "job-atomic", env).request.prompt, "p");
 });
+
+test("finishJob never demotes a cancelled job and orphaned jobs are reconciled", async () => {
+  const { finishJob } = await import("../plugins/claude/scripts/lib/state.mjs");
+  const { reconcileOrphans, buildStatusSnapshot } = await import("../plugins/claude/scripts/lib/jobs.mjs");
+  const env = withStateDir();
+  const ws = makeTempDir();
+  upsertJob(ws, { id: "job-c", kind: "task", status: "cancelled", error: "Cancelled by user." }, env);
+  const kept = finishJob(ws, "job-c", { status: "succeeded", finishedAt: "2026-09-04T00:00:00.000Z", error: null }, env);
+  assert.equal(kept.status, "cancelled");
+  assert.equal(kept.error, "Cancelled by user.");
+  upsertJob(ws, { id: "job-o", kind: "task", status: "running", pid: 999999, workerPid: 999998 }, env);
+  assert.deepEqual(reconcileOrphans(ws, env), ["job-o"]);
+  assert.equal(getJob(ws, "job-o", env).status, "failed");
+  assert.match(getJob(ws, "job-o", env).error, /worker exited/);
+  assert.equal(buildStatusSnapshot(ws, {}, env).running.length, 0);
+});

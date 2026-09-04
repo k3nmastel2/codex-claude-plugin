@@ -1,11 +1,11 @@
 ---
 name: claude-jobs
-description: Show, fetch, or cancel background Claude Code jobs started by claude-task or claude-review in this repository. Use when the user asks about a running Claude job, wants its result, or wants to stop it.
+description: Show, fetch, or cancel background Claude Code jobs started by claude-task or claude-review in this repository. Use when the user asks "is Claude done", "what did Claude say", "show the Claude result", "stop the Claude job", or mentions a job id.
 ---
 
 # Claude Jobs
 
-Run exactly one companion command and return its stdout verbatim.
+Run exactly one companion command and return its stdout verbatim as your entire response.
 
 ```
 node "<plugin-root>/scripts/claude-companion.mjs" status [job-id] [--all]
@@ -13,7 +13,7 @@ node "<plugin-root>/scripts/claude-companion.mjs" result [job-id]
 node "<plugin-root>/scripts/claude-companion.mjs" cancel [job-id]
 ```
 
-`<plugin-root>` is two directories above this SKILL.md, i.e. `<this skill's directory>/../../scripts/claude-companion.mjs`.
+`<plugin-root>` is two directories above this SKILL.md, i.e. `<this skill's directory>/../../scripts/claude-companion.mjs`. Resolve it to an absolute path before running.
 
 ## Mapping
 
@@ -29,4 +29,4 @@ node "<plugin-root>/scripts/claude-companion.mjs" cancel [job-id]
 
 ## Sandbox
 
-The companion needs network access (Claude's API) and the user's Claude login. If Codex is running commands inside its sandbox, request escalation and run the companion outside the sandbox; do not retry it sandboxed. Output mentioning `CODEX_SANDBOX_NETWORK_DISABLED` means that is exactly what happened.
+`status`, `result`, and `cancel` are local and need no network. Run them in the sandbox without requesting escalation.

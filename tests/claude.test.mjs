@@ -15,6 +15,7 @@ test("read-only args deny edits and never skip permissions", () => {
   assert.deepEqual(args.slice(0, 3), ["-p", "--output-format", "json"]);
   assert.ok(has(args, "--permission-mode", "dontAsk"));
   assert.ok(has(args, "--disallowedTools", READ_ONLY_DISALLOWED));
+  assert.ok(READ_ONLY_DISALLOWED.split(",").includes("Bash"), "read-only denies Bash even if the user pre-approved it");
   assert.equal(args.includes("--dangerously-skip-permissions"), false);
 });
 
@@ -94,5 +95,5 @@ test("resolveWindowsClaude reads the npm shim to find the real script", () => {
   const resolved = resolveWindowsClaude(`${shimPath}\r\n`, (p) => p === target, () => shim);
   assert.deepEqual(resolved, { command: process.execPath, args: [target], shell: false });
   const unreadable = resolveWindowsClaude(`${shimPath}\r\n`, () => false, () => { throw new Error("nope"); });
-  assert.deepEqual(unreadable, { command: shimPath, args: [], shell: true });
+  assert.equal(unreadable, null, "an unsupported shim is never routed through a shell");
 });

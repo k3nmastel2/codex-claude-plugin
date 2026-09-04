@@ -37,7 +37,7 @@ test("review findings are ordered by severity and end with next steps", () => {
   assert.ok(text.indexOf("[HIGH] Null deref") < text.indexOf("[LOW] Nit"));
   assert.match(text, /src\/a\.js:10-12 \(confidence 0\.90\)/);
   assert.match(text, /Recommendation: guard it/);
-  assert.match(text, /## Next steps\n- Add a null guard\n$/);
+  assert.match(text, /## Next steps\n- Add a null guard\n\nclaude session sess-1 · 3 turns · \$0\.0457\n$/, "review trailer has no resume hint");
 });
 
 test("review with no findings and with unstructured output", () => {

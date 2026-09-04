@@ -32,7 +32,7 @@ export function makeGitRepo(dir) {
 export function cleanEnv() {
   const env = {};
   for (const [name, value] of Object.entries(process.env)) {
-    if (/^(CLAUDECODE|CLAUDE_|CODEX_COMPANION_|FAKE_CLAUDE_)/.test(name)) continue;
+    if (/^(CLAUDECODE|CLAUDE_|CODEX_|FAKE_CLAUDE_)/.test(name)) continue;
     env[name] = value;
   }
   return env;

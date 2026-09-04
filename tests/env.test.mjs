@@ -19,9 +19,10 @@ test("inherited CLAUDECODE=1 is nested", () => {
   assert.match(report.reason, /Claude Code session/);
 });
 
-test("max depth can be raised and allowNested overrides", () => {
+test("max depth can be raised; allowNested waives only the CLAUDECODE check", () => {
   assert.equal(detectNesting({ CLAUDE_COMPANION_DEPTH: "1", CLAUDE_COMPANION_MAX_DEPTH: "2" }).nested, false);
   assert.equal(detectNesting({ CLAUDECODE: "1" }, { allowNested: true }).nested, false);
+  assert.equal(detectNesting({ CLAUDE_COMPANION_DEPTH: "1" }, { allowNested: true }).nested, true, "depth limit is never waived");
 });
 
 test("readDepth tolerates garbage", () => {

@@ -12,14 +12,14 @@ npm test
 
 `npm test` runs every test with a fake `claude` binary (`tests/fixtures/fake-claude.mjs`). It needs no credentials and spends nothing. Node 20 or newer and git are the only requirements.
 
-To try your change inside Codex, point Codex at your clone and reinstall the plugin after each edit:
+To try your change inside Codex, add your clone as a marketplace once, then refresh the installed copy after each edit:
 
 ```bash
-codex plugin marketplace add /path/to/codex-claude-plugin
-codex plugin add claude@codex-claude-plugin
+codex plugin marketplace add /path/to/codex-claude-plugin   # once
+codex plugin add claude@codex-claude-plugin                    # after every edit; refreshes the cached copy
 ```
 
-Then start a new Codex thread; Codex only reloads skills at thread start.
+If Codex still shows the old version, run `codex plugin remove claude` and add it again. Then start a new Codex thread; Codex only reloads skills at thread start.
 
 ## Where things live
 
@@ -34,9 +34,9 @@ Then start a new Codex thread; Codex only reloads skills at thread start.
 
 ## Ground rules
 
-- Every script must run unchanged on macOS, Linux, and Windows. No bash, no shell pipelines in code, no assumptions about path separators. CI runs all three.
+- Every script must run unchanged on macOS, Linux, and Windows. Spawn processes directly, never through a shell; no bash, no assumptions about path separators. CI runs all three.
 - Read-only stays the default. Anything that lets Claude edit or run commands must be an explicit flag.
-- The companion never invents an answer when Claude did not run. Failures print one actionable line.
+- The companion never invents an answer when Claude did not run. Failures print an actionable message first, then any stderr Claude produced.
 - Add or update a test with every behaviour change. `node --test tests/<file>.test.mjs` runs one file.
 - Never commit state files, logs, `.env` files, or anything from `~/.codex` or `~/.claude`.
 

@@ -12,6 +12,6 @@ Include the version (`codex plugin list`), your OS, and a minimal reproduction. 
 
 ## Scope notes
 
-- Prompts are passed to Claude on stdin, never through a shell, and never logged by this plugin beyond the job files under `$CODEX_HOME/claude-companion/state/`, which stay on your machine.
+- Prompts reach Claude on stdin by default (never through a shell) and are stored only in the job files under `$CODEX_HOME/claude-companion/state/`, created with owner-only permissions where the OS supports them. They stay on your machine.
 - `--full` disables every Claude Code permission check by design. That is a feature, documented as such, not a vulnerability.
 - Claude Code itself, Codex itself, and the models are out of scope; report those to Anthropic and OpenAI respectively.

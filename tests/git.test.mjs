@@ -69,3 +69,30 @@ test("oversize diffs fall back to a stat summary", () => {
   assert.match(context.text, /too large to inline/i);
   assert.match(context.text, /big\.txt/);
 });
+
+test("a repository with no commits can still be reviewed as a working tree", () => {
+  const repo = makeTempDir();
+  git(repo, "init", "-q", "-b", "main");
+  fs.writeFileSync(path.join(repo, "first.js"), "export const a = 1;\n");
+  git(repo, "add", "first.js");
+  fs.writeFileSync(path.join(repo, "second.js"), "export const b = 2;\n");
+  const target = resolveReviewTarget(repo);
+  assert.equal(target.mode, "working-tree");
+  const context = collectReviewContext(repo, target);
+  assert.match(context.text, /\+export const a = 1;/);
+  assert.match(context.text, /=== untracked: second\.js ===/);
+  assert.throws(() => resolveReviewTarget(repo, { scope: "branch" }), /no commits yet/);
+});
+
+test("untracked symlinks are never inlined and invalid scopes are rejected", { skip: process.platform === "win32" }, () => {
+  const repo = makeTempDir();
+  makeGitRepo(repo);
+  const secret = path.join(makeTempDir(), "secret.txt");
+  fs.writeFileSync(secret, "TOP-SECRET-CONTENT\n");
+  fs.symlinkSync(secret, path.join(repo, "link.txt"));
+  fs.writeFileSync(path.join(repo, "plain.txt"), "plain\n");
+  const context = collectReviewContext(repo, resolveReviewTarget(repo));
+  assert.equal(context.text.includes("TOP-SECRET-CONTENT"), false);
+  assert.match(context.text, /=== untracked: plain\.txt ===/);
+  assert.throws(() => resolveReviewTarget(repo, { scope: "everything" }), /Unsupported --scope/);
+});

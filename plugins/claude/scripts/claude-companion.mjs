@@ -4,8 +4,8 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-import { normalizeArgv, parseArgs } from "./lib/args.mjs";
-import { buildClaudeArgs, getClaudeAuthStatus, getClaudeAvailability } from "./lib/claude.mjs";
+import { parseArgs } from "./lib/args.mjs";
+import { buildClaudeArgs, getClaudeAuthStatus, getClaudeAvailability, INSTALL_HINT } from "./lib/claude.mjs";
 import { detectNesting, detectSandbox } from "./lib/env.mjs";
 import { collectReviewContext, resolveReviewTarget } from "./lib/git.mjs";
 import {
@@ -25,6 +25,7 @@ const PLUGIN_ROOT = path.resolve(path.dirname(ENTRY_PATH), "..");
 const REVIEW_SCHEMA_PATH = path.join(PLUGIN_ROOT, "schemas", "review-output.schema.json");
 const DEFAULT_FOREGROUND_TIMEOUT_MS = 20 * 60 * 1000;
 const DEFAULT_BACKGROUND_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+const MIN_NODE_MAJOR = 20;
 const USAGE = [
   "Usage: node claude-companion.mjs <command> [options]",
   "  setup [--json]",
@@ -34,7 +35,9 @@ const USAGE = [
   "  status [job-id] [--all] [--json]",
   "  result [job-id] [--json]",
   "  cancel [job-id] [--json]",
-  "  resume-candidate [--json]"
+  "  resume-candidate [--json]",
+  "",
+  "Flags must be separate arguments; a single argument is always treated as literal text."
 ].join("\n");
 
 const PARSE_CONFIG = {
@@ -46,8 +49,9 @@ const PARSE_CONFIG = {
 
 class UsageError extends Error {}
 
+// Never re-tokenise argv: a prompt that happens to start with "--full" must stay a prompt.
 function parse(argv) {
-  return parseArgs(normalizeArgv(argv), PARSE_CONFIG);
+  return parseArgs(argv, PARSE_CONFIG);
 }
 
 function resolveContext(options) {
@@ -76,17 +80,25 @@ async function readStdin() {
   return data;
 }
 
-function parseIntOption(value, name) {
+function parseIntegerOption(value, name) {
+  if (value == null) return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) throw new UsageError(`--${name} must be a non-negative integer.`);
+  return parsed;
+}
+
+function parseNumberOption(value, name) {
   if (value == null) return null;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) throw new UsageError(`--${name} must be a non-negative number.`);
   return parsed;
 }
 
-function guardNesting(env, options, asJson) {
+function guardEnvironment(env, options, asJson) {
   const nesting = detectNesting(env, { allowNested: Boolean(options["allow-nested"]) });
   if (nesting.nested) {
-    emitFailure(asJson, failurePayload("nested", `${nesting.reason} Pass --allow-nested to override.`));
+    const hint = options["allow-nested"] ? ` Raise ${"CLAUDE_COMPANION_MAX_DEPTH"} to allow deeper chains.` : " Pass --allow-nested to override.";
+    emitFailure(asJson, failurePayload("nested", `${nesting.reason}${hint}`));
     return false;
   }
   const sandbox = detectSandbox(env);
@@ -112,23 +124,35 @@ async function runOrLaunch({ workspaceRoot, env, asJson, kind, cwd, promptExcerp
   emit(asJson, payload, render(payload));
 }
 
+function nodeStatus() {
+  const version = process.versions.node;
+  const major = Number.parseInt(version.split(".")[0], 10);
+  return major >= MIN_NODE_MAJOR
+    ? { available: true, detail: `v${version}` }
+    : { available: false, detail: `v${version} is older than the required Node ${MIN_NODE_MAJOR}` };
+}
+
 async function commandSetup(argv) {
   const { options } = parse(argv);
   const { cwd, env } = resolveContext(options);
-  const node = binaryAvailable(process.execPath, ["--version"]);
+  const node = nodeStatus();
+  const git = binaryAvailable("git", ["--version"], { env });
   const claude = getClaudeAvailability(env);
   const auth = claude.available ? getClaudeAuthStatus(env) : { loggedIn: false, detail: "claude not found" };
   const nesting = detectNesting(env);
   const sandbox = detectSandbox(env);
   const nextSteps = [];
+  if (!node.available) nextSteps.push(`Install Node.js ${MIN_NODE_MAJOR} or newer from https://nodejs.org and open a new terminal.`);
+  if (!git.available) nextSteps.push("Install git (reviews and workspace detection need it): https://git-scm.com/downloads");
   if (!claude.available) {
-    nextSteps.push("Install Claude Code (https://docs.claude.com/en/docs/claude-code/setup), for example `npm install -g @anthropic-ai/claude-code`, then re-run setup.");
+    nextSteps.push(INSTALL_HINT);
   } else if (!auth.loggedIn) {
     nextSteps.push("Run `claude auth login` in your own terminal (or export ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN), then re-run setup.");
   }
   if (nesting.nested) nextSteps.push(`Nesting guard is active: ${nesting.reason}`);
   if (sandbox.networkDisabled) nextSteps.push(sandbox.reason);
-  const report = { ready: node.available && claude.available && auth.loggedIn && !nesting.nested && !sandbox.networkDisabled, cwd, node, claude, auth, nesting, sandbox, nextSteps };
+  const ready = node.available && git.available && claude.available && auth.loggedIn && !nesting.nested && !sandbox.networkDisabled;
+  const report = { ready, cwd, node, git, claude, auth, nesting, sandbox, nextSteps };
   emit(Boolean(options.json), report, renderSetupReport(report));
   if (!report.ready) process.exitCode = 1;
 }
@@ -137,7 +161,7 @@ async function commandTask(argv) {
   const { options, positionals } = parse(argv);
   const asJson = Boolean(options.json);
   const { cwd, workspaceRoot, env } = resolveContext(options);
-  if (!guardNesting(env, options, asJson)) return;
+  if (!guardEnvironment(env, options, asJson)) return;
 
   let prompt = positionals.join(" ").trim();
   if (prompt === "-" || !prompt) prompt = (await readStdin()).trim();
@@ -160,14 +184,14 @@ async function commandTask(argv) {
     resumeSessionId,
     model: options.model ?? null,
     effort: options.effort ?? null,
-    maxTurns: parseIntOption(options["max-turns"], "max-turns"),
-    maxBudgetUsd: options["max-budget-usd"] ?? null,
+    maxTurns: parseIntegerOption(options["max-turns"], "max-turns"),
+    maxBudgetUsd: parseNumberOption(options["max-budget-usd"], "max-budget-usd"),
     addDirs: options["add-dir"] ?? [],
     name: `Codex → Claude: ${excerpt(prompt, 56)}`,
     appendSystemPrompt: loadCodexContext(PLUGIN_ROOT)
   });
   const background = Boolean(options.background);
-  const timeoutMs = parseIntOption(options["timeout-ms"], "timeout-ms") ?? (background ? DEFAULT_BACKGROUND_TIMEOUT_MS : DEFAULT_FOREGROUND_TIMEOUT_MS);
+  const timeoutMs = parseIntegerOption(options["timeout-ms"], "timeout-ms") ?? (background ? DEFAULT_BACKGROUND_TIMEOUT_MS : DEFAULT_FOREGROUND_TIMEOUT_MS);
 
   await runOrLaunch({
     workspaceRoot, env, asJson, kind: "task", cwd, promptExcerpt: prompt, background,
@@ -180,7 +204,7 @@ async function commandReview(argv) {
   const { options, positionals } = parse(argv);
   const asJson = Boolean(options.json);
   const { cwd, workspaceRoot, env } = resolveContext(options);
-  if (!guardNesting(env, options, asJson)) return;
+  if (!guardEnvironment(env, options, asJson)) return;
 
   let target;
   let context;
@@ -205,7 +229,7 @@ async function commandReview(argv) {
     jsonSchema: schema
   });
   const background = Boolean(options.background);
-  const timeoutMs = parseIntOption(options["timeout-ms"], "timeout-ms") ?? (background ? DEFAULT_BACKGROUND_TIMEOUT_MS : DEFAULT_FOREGROUND_TIMEOUT_MS);
+  const timeoutMs = parseIntegerOption(options["timeout-ms"], "timeout-ms") ?? (background ? DEFAULT_BACKGROUND_TIMEOUT_MS : DEFAULT_FOREGROUND_TIMEOUT_MS);
 
   await runOrLaunch({
     workspaceRoot, env, asJson, kind: "review", cwd, background,
@@ -220,6 +244,7 @@ async function commandStatus(argv) {
   const { workspaceRoot, env } = resolveContext(options);
   const [jobId] = positionals;
   if (jobId) {
+    buildStatusSnapshot(workspaceRoot, {}, env);
     const job = getJob(workspaceRoot, jobId, env);
     if (!job) {
       emitFailure(Boolean(options.json), failurePayload("job", `No job named ${jobId} in this workspace.`));

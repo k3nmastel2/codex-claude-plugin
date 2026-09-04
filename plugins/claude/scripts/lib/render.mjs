@@ -1,7 +1,5 @@
 export const SEVERITY_ORDER = ["critical", "high", "medium", "low"];
 
-const COMPANION = "claude-companion.mjs";
-
 function finish(lines) {
   return `${lines.join("\n").trimEnd()}\n`;
 }
@@ -22,10 +20,12 @@ function describeDenial(denial) {
   return detail ? `${denial.tool_name} (${detail})` : String(denial?.tool_name ?? "unknown tool");
 }
 
-function trailer(payload) {
+function trailer(payload, { resumable = true } = {}) {
   const cost = payload.costUsd == null ? "cost n/a" : `$${Number(payload.costUsd).toFixed(4)}`;
   const turns = payload.numTurns == null ? "? turns" : `${payload.numTurns} turns`;
-  const lines = [`claude session ${payload.sessionId ?? "unknown"} · ${turns} · ${cost} · resume with --resume`];
+  const parts = [`claude session ${payload.sessionId ?? "unknown"}`, turns, cost];
+  if (resumable) parts.push("resume with --resume");
+  const lines = [parts.join(" · ")];
   if (payload.permissionDenials?.length) {
     lines.push(`denied: ${payload.permissionDenials.map(describeDenial).join(", ")} — rerun with --write or --allow <rule> if Claude needed them`);
   }
@@ -52,7 +52,7 @@ export function renderReviewResult(payload) {
   const lines = [`# Claude Review (${payload.targetLabel ?? "unknown target"})`, ""];
   const review = coerceStructured(payload);
   if (!review) {
-    lines.push("Claude returned unstructured review output:", "", String(payload.result ?? "").trimEnd());
+    lines.push("Claude returned unstructured review output:", "", String(payload.result ?? "").trimEnd(), "", ...trailer(payload, { resumable: false }));
     return finish(lines);
   }
   lines.push(`Verdict: ${review.verdict ?? "unknown"}`, `Summary: ${review.summary ?? ""}`, "", "## Findings", "");
@@ -73,6 +73,7 @@ export function renderReviewResult(payload) {
   const steps = review.next_steps ?? [];
   if (steps.length === 0) lines.push("- None.");
   for (const step of steps) lines.push(`- ${step}`);
+  lines.push("", ...trailer(payload, { resumable: false }));
   return finish(lines);
 }
 
@@ -84,15 +85,19 @@ export function renderFailure(payload) {
 
 export function renderSetupReport(report) {
   const yesNo = (value) => (value ? "yes" : "no");
+  const sandbox = report.sandbox?.networkDisabled
+    ? "Codex sandbox with network disabled"
+    : report.sandbox?.sandboxed ? "Codex sandbox (network allowed)" : "none detected";
   const lines = [
     "# Claude Companion Setup",
     "",
     `Ready: ${yesNo(report.ready)}`,
     `- node: ${report.node.available ? report.node.detail : `missing (${report.node.detail})`}`,
+    `- git: ${report.git ? (report.git.available ? report.git.detail : `missing (${report.git.detail})`) : "not checked"}`,
     `- claude: ${report.claude.available ? report.claude.detail : `missing (${report.claude.detail})`}`,
     `- login: ${report.auth.loggedIn ? report.auth.detail : `not logged in (${report.auth.detail})`}`,
     `- nesting: ${report.nesting.nested ? `blocked — ${report.nesting.reason}` : "clear"}`,
-    `- sandbox: ${report.sandbox?.networkDisabled ? "Codex sandbox with network disabled" : report.sandbox?.sandboxed ? "Codex sandbox (network allowed)" : "none detected"}`
+    `- sandbox: ${sandbox}`
   ];
   if (report.nextSteps?.length) {
     lines.push("", "Next steps:");
@@ -111,8 +116,8 @@ export function renderJobDetails(job, { showElapsed = false } = {}) {
   if (job.promptExcerpt) lines.push(`  prompt: ${job.promptExcerpt}`);
   if (job.summary) lines.push(`  summary: ${job.summary}`);
   if (job.error) lines.push(`  error: ${job.error}`);
-  if (job.status === "succeeded" || job.status === "failed") lines.push(`  output: node ${COMPANION} result ${job.id}`);
-  if (job.status === "running" || job.status === "queued") lines.push(`  stop: node ${COMPANION} cancel ${job.id}`);
+  if (job.status === "succeeded" || job.status === "failed") lines.push(`  output: $claude-jobs result ${job.id}`);
+  if (job.status === "running" || job.status === "queued") lines.push(`  stop: $claude-jobs cancel ${job.id}`);
   return lines.join("\n");
 }
 
@@ -152,8 +157,8 @@ export function renderCancelReport(report) {
 export function renderBackgroundLaunch(job) {
   return finish([
     `Started Claude ${job.kind} job ${job.id} in the background.`,
-    `Progress: node ${COMPANION} status ${job.id}`,
-    `Output:   node ${COMPANION} result ${job.id}`,
-    `Stop:     node ${COMPANION} cancel ${job.id}`
+    `Progress: $claude-jobs status ${job.id}`,
+    `Output:   $claude-jobs result ${job.id}`,
+    `Stop:     $claude-jobs cancel ${job.id}`
   ]);
 }

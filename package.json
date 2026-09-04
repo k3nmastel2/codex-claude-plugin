@@ -4,6 +4,7 @@
   "private": true,
   "description": "Codex plugin that delegates work to Claude Code through its local CLI.",
   "type": "module",
+  "keywords": ["codex", "openai-codex", "claude-code", "claude", "anthropic", "plugin", "ai-agents", "code-review", "multi-agent", "developer-tools"],
   "engines": { "node": ">=20" },
   "scripts": {
     "test": "node tests/run.mjs"

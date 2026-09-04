@@ -46,3 +46,22 @@ test("terminateProcessTree kills a detached child", async () => {
   ]);
   assert.equal(exited, true);
 });
+
+test("terminateProcessTree escalates to SIGKILL for a child that ignores SIGTERM", { skip: process.platform === "win32" }, async () => {
+  const child = spawn(process.execPath, ["-e", "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const report = terminateProcessTree(child.pid, { graceMs: 400 });
+  assert.match(report.method, /SIGKILL/);
+  const exited = await Promise.race([
+    new Promise((resolve) => child.on("exit", () => resolve(true))),
+    new Promise((resolve) => setTimeout(() => resolve(false), 3000))
+  ]);
+  assert.equal(exited, true);
+});
+
+test("describeProcess names a live process and returns null for a dead pid", async () => {
+  const { describeProcess, isProcessAlive } = await import("../plugins/claude/scripts/lib/process.mjs");
+  assert.equal(isProcessAlive(process.pid), true);
+  assert.match(describeProcess(process.pid) ?? "", /node/i);
+  assert.equal(describeProcess(999999), null);
+});

@@ -8,10 +8,15 @@ import { binaryAvailable, resolveCommandSpec, runCommand, terminateProcessTree }
 export const CLAUDE_CMD_ENV = "CLAUDE_COMPANION_CLAUDE_CMD";
 export const PROMPT_VIA_ARGV_ENV = "CLAUDE_COMPANION_PROMPT_VIA_ARGV";
 export const VALID_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
-export const READ_ONLY_DISALLOWED = "Edit,Write,MultiEdit,NotebookEdit";
+// Deny rules beat allow rules in Claude Code, so listing the shell tools here keeps
+// read-only mode read-only even when the user's own settings pre-approve Bash.
+export const READ_ONLY_DISALLOWED = "Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit";
+export const INSTALL_HINT = "Install Claude Code (macOS/Linux: curl -fsSL https://claude.ai/install.sh | bash; Windows PowerShell: irm https://claude.ai/install.ps1 | iex), open a new terminal, then run `claude auth login`.";
 const PERMISSION_LEVELS = new Set(["read", "write", "full"]);
 const AUTH_PATTERN = /authenticat|oauth|not logged in|log in|login|api key|credential/i;
 
+// Windows: prefer the native claude.exe; otherwise unwrap the npm cmd shim and run its
+// script with node directly. Nothing is ever handed to cmd.exe.
 export function resolveWindowsClaude(whereOutput, existsSync = fs.existsSync, readFileSync = (file) => fs.readFileSync(file, "utf8")) {
   const candidates = String(whereOutput ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const exe = candidates.find((candidate) => candidate.toLowerCase().endsWith(".exe"));
@@ -19,7 +24,6 @@ export function resolveWindowsClaude(whereOutput, existsSync = fs.existsSync, re
   const cmd = candidates.find((candidate) => candidate.toLowerCase().endsWith(".cmd"));
   if (cmd) {
     // npm writes a cmd shim that ends in: "%_prog%"  "%dp0%\<relative path>.js" %*
-    // Run that script with node directly so long arguments never pass through cmd.exe.
     const shimDir = path.win32.dirname(cmd);
     let shim = "";
     try {
@@ -33,7 +37,6 @@ export function resolveWindowsClaude(whereOutput, existsSync = fs.existsSync, re
     scripts.push(path.win32.join(shimDir, "node_modules", "@anthropic-ai", "claude-code", "cli.js"));
     const cliJs = scripts.find((candidate) => existsSync(candidate));
     if (cliJs) return { command: process.execPath, args: [cliJs], shell: false };
-    return { command: cmd, args: [], shell: true };
   }
   return null;
 }
@@ -47,7 +50,9 @@ export function resolveClaudeCommand(env = process.env, options = {}) {
     return { command: "claude", args: [], shell: false };
   }
   const where = options.where ?? (() => runCommand("where.exe", ["claude"], { env }).stdout);
-  return resolveWindowsClaude(where()) ?? { command: "claude", args: [], shell: true };
+  // When only an unsupported shim exists, spawning the bare name fails with ENOENT and the
+  // caller reports the install hint, instead of routing arguments through a shell.
+  return resolveWindowsClaude(where()) ?? { command: "claude", args: [], shell: false };
 }
 
 export function buildClaudeArgs(options = {}) {
@@ -101,7 +106,7 @@ function tail(text, limit = 20) {
 
 export function classifyFailure(run = {}) {
   if (run.error?.code === "ENOENT") {
-    return { kind: "missing", message: "The claude CLI was not found on PATH. Install Claude Code, then run `claude auth login`. See https://docs.claude.com/en/docs/claude-code/setup" };
+    return { kind: "missing", message: `The claude CLI was not found on PATH. ${INSTALL_HINT}` };
   }
   if (run.error) {
     return { kind: "exit", message: `Could not start claude: ${run.error.message}` };
@@ -158,14 +163,14 @@ export function runClaude({ cwd, env = process.env, prompt, claudeArgs, timeoutM
       resolve({ pid: child?.pid ?? null, stdout, stderr, timedOut, ...payload });
     };
     try {
-      child = spawn(resolved.command, args, { cwd, env: childEnv, stdio: ["pipe", "pipe", "pipe"], shell: resolved.shell, windowsHide: true, detached });
+      child = spawn(resolved.command, args, { cwd, env: childEnv, stdio: ["pipe", "pipe", "pipe"], shell: false, windowsHide: true, detached });
     } catch (error) {
       finish({ status: null, signal: null, error });
       return;
     }
     // If Codex kills the companion (shell timeout, user abort), take Claude down with it
     // so a --write or --full run never continues unattended.
-    cleanup = () => terminateProcessTree(child.pid);
+    cleanup = () => terminateProcessTree(child.pid, { graceMs: 300 });
     process.once("SIGINT", cleanup);
     process.once("SIGTERM", cleanup);
     process.once("exit", cleanup);
@@ -190,22 +195,22 @@ export function runClaude({ cwd, env = process.env, prompt, claudeArgs, timeoutM
 
 export function getClaudeAvailability(env = process.env) {
   const resolved = resolveClaudeCommand(env);
-  return binaryAvailable(resolved.command, [...resolved.args, "--version"], { env });
+  return binaryAvailable(resolved.command, [...resolved.args, "--version"], { env, shell: false });
 }
 
 export function getClaudeAuthStatus(env = process.env) {
   const resolved = resolveClaudeCommand(env);
-  const result = runCommand(resolved.command, [...resolved.args, "auth", "status"], { env, shell: resolved.shell, timeoutMs: 15000 });
+  const result = runCommand(resolved.command, [...resolved.args, "auth", "status"], { env, shell: false, timeoutMs: 15000 });
   if (result.error) {
     return { loggedIn: false, detail: result.error.code === "ENOENT" ? "claude not found" : result.error.message };
   }
   try {
     const parsed = JSON.parse(result.stdout.trim());
     if (typeof parsed.loggedIn === "boolean") {
-      return { loggedIn: parsed.loggedIn, detail: parsed.loggedIn ? `logged in (${parsed.authMethod ?? "unknown"})` : "not logged in" };
+      return { loggedIn: parsed.loggedIn, detail: parsed.loggedIn ? `logged in (${parsed.authMethod ?? "unknown"})` : "run `claude auth login`" };
     }
   } catch {
     // fall back to the exit code
   }
-  return { loggedIn: result.status === 0, detail: result.status === 0 ? "logged in" : (result.stderr.trim() || result.stdout.trim() || "not logged in") };
+  return { loggedIn: result.status === 0, detail: result.status === 0 ? "logged in" : (result.stderr.trim() || result.stdout.trim() || "run `claude auth login`") };
 }

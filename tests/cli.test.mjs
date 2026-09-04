@@ -48,10 +48,14 @@ test("task prints the answer and trailer, records the job, and stores the reques
   assert.ok(request.claudeArgs.some((arg) => arg.startsWith("Codex → Claude: explain the auth")));
 });
 
-test("task honours a raw argument string, --write, --full, --allow, --model, --effort", () => {
+test("task takes flags only as separate arguments; a single argument is literal prompt text", () => {
   const env = envFor();
   const cwd = makeTempDir();
-  assert.equal(cli(cwd, env, ["task", '--write --model opus --effort high --allow "Bash(npm test:*)" fix the bug']).status, 0);
+  assert.equal(cli(cwd, env, ["task", "--full explain this flag"]).status, 0);
+  const literal = readJobFile(cwd, listJobs(cwd, env)[0].id, env).request;
+  assert.equal(literal.prompt, "--full explain this flag");
+  assert.equal(literal.claudeArgs.includes("--dangerously-skip-permissions"), false, "a prompt starting with --full must not escalate");
+  assert.equal(cli(cwd, env, ["task", "--write", "--model", "opus", "--effort", "high", "--allow", "Bash(npm test:*)", "fix", "the", "bug"]).status, 0);
   const write = readJobFile(cwd, listJobs(cwd, env)[0].id, env).request;
   assert.equal(write.prompt, "fix the bug");
   assert.ok(write.claudeArgs.includes("acceptEdits"));
@@ -161,4 +165,25 @@ test("sandbox with network disabled is refused with the escalation hint", () => 
   assert.ok(json(setup).nextSteps.some((step) => /network_access = true/.test(step)));
   const allowed = cli(makeTempDir(), envFor({ CODEX_SANDBOX: "seatbelt" }), ["task", "hi"]);
   assert.equal(allowed.status, 0);
+});
+
+test("setup checks git and node, and rejects bad numeric or scope options", () => {
+  const ready = json(cli(makeTempDir(), envFor(), ["setup", "--json"]));
+  assert.equal(ready.git.available, true);
+  assert.equal(ready.node.available, true);
+  const badTurns = cli(makeTempDir(), envFor(), ["task", "--max-turns", "1.5", "hi"]);
+  assert.equal(badTurns.status, 1);
+  assert.match(badTurns.stdout, /non-negative integer/);
+  const repo = makeTempDir();
+  makeGitRepo(repo);
+  const badScope = cli(repo, envFor(), ["review", "--scope", "bogus"]);
+  assert.equal(badScope.status, 1);
+  assert.match(badScope.stdout, /Unsupported --scope/);
+});
+
+test("allow-nested waives CLAUDECODE but never the depth limit", () => {
+  const env = envFor({ CLAUDE_COMPANION_DEPTH: "1" });
+  const result = cli(makeTempDir(), env, ["task", "--allow-nested", "hi"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /CLAUDE_COMPANION_MAX_DEPTH/);
 });

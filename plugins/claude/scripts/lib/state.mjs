@@ -3,10 +3,17 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { sleepSync } from "./process.mjs";
 
 export const STATE_DIR_ENV = "CLAUDE_COMPANION_STATE_DIR";
 export const MAX_JOBS = 50;
 const STATE_VERSION = 1;
+const LOCK_TIMEOUT_MS = 5000;
+const LOCK_STALE_MS = 30000;
+const LOCK_POLL_MS = 20;
+// Prompts are stored in these files; keep them private to the user where the OS supports modes.
+const DIR_MODE = 0o700;
+const FILE_MODE = 0o600;
 
 function nowIso() {
   return new Date().toISOString();
@@ -51,7 +58,47 @@ export function resolveJobLogFile(workspaceRoot, jobId, env) {
 }
 
 export function ensureStateDir(workspaceRoot, env) {
-  fs.mkdirSync(resolveJobsDir(workspaceRoot, env), { recursive: true });
+  fs.mkdirSync(resolveStateRoot(env), { recursive: true, mode: DIR_MODE });
+  fs.mkdirSync(resolveStateDir(workspaceRoot, env), { recursive: true, mode: DIR_MODE });
+  fs.mkdirSync(resolveJobsDir(workspaceRoot, env), { recursive: true, mode: DIR_MODE });
+}
+
+// Write through a temp file and rename so a concurrent reader never sees a half-written file.
+function writeFileAtomic(file, content) {
+  const tmp = `${file}.${process.pid}.${Date.now().toString(36)}.tmp`;
+  fs.writeFileSync(tmp, content, { encoding: "utf8", mode: FILE_MODE });
+  fs.renameSync(tmp, file);
+}
+
+// A directory works as a cross-platform mutex: mkdir is atomic on every OS.
+export function withStateLock(workspaceRoot, env, fn) {
+  ensureStateDir(workspaceRoot, env);
+  const lockDir = path.join(resolveStateDir(workspaceRoot, env), ".lock");
+  const deadline = Date.now() + LOCK_TIMEOUT_MS;
+  for (;;) {
+    try {
+      fs.mkdirSync(lockDir);
+      break;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      try {
+        if (Date.now() - fs.statSync(lockDir).mtimeMs > LOCK_STALE_MS) {
+          fs.rmSync(lockDir, { recursive: true, force: true });
+          continue;
+        }
+      } catch {
+        // lock vanished between the check and the stat; retry immediately
+        continue;
+      }
+      if (Date.now() > deadline) throw new Error(`Timed out waiting for the state lock at ${lockDir}.`);
+      sleepSync(LOCK_POLL_MS);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    fs.rmSync(lockDir, { recursive: true, force: true });
+  }
 }
 
 export function loadState(workspaceRoot, env) {
@@ -70,20 +117,12 @@ export function loadState(workspaceRoot, env) {
   }
 }
 
-// Write through a temp file and rename so a concurrent reader never sees a half-written JSON file.
-function writeFileAtomic(file, content) {
-  const tmp = `${file}.${process.pid}.${Date.now().toString(36)}.tmp`;
-  fs.writeFileSync(tmp, content, "utf8");
-  fs.renameSync(tmp, file);
-}
-
 function removeIfExists(file) {
   if (file && fs.existsSync(file)) fs.rmSync(file, { force: true });
 }
 
-export function saveState(workspaceRoot, state, env) {
+function persistState(workspaceRoot, state, env) {
   const previous = loadState(workspaceRoot, env);
-  ensureStateDir(workspaceRoot, env);
   const jobs = [...(state.jobs ?? [])]
     .sort((a, b) => String(b.updatedAt ?? "").localeCompare(String(a.updatedAt ?? "")))
     .slice(0, MAX_JOBS);
@@ -98,10 +137,17 @@ export function saveState(workspaceRoot, state, env) {
   return next;
 }
 
+export function saveState(workspaceRoot, state, env) {
+  return withStateLock(workspaceRoot, env, () => persistState(workspaceRoot, state, env));
+}
+
+// Read-modify-write under the lock, so concurrent companions never clobber each other.
 export function updateState(workspaceRoot, mutate, env) {
-  const state = loadState(workspaceRoot, env);
-  mutate(state);
-  return saveState(workspaceRoot, state, env);
+  return withStateLock(workspaceRoot, env, () => {
+    const state = loadState(workspaceRoot, env);
+    mutate(state);
+    return persistState(workspaceRoot, state, env);
+  });
 }
 
 export function upsertJob(workspaceRoot, patch, env) {
@@ -111,6 +157,20 @@ export function upsertJob(workspaceRoot, patch, env) {
     const index = state.jobs.findIndex((entry) => entry.id === patch.id);
     const base = index === -1 ? { createdAt: nowIso() } : state.jobs[index];
     job = { ...base, ...patch, updatedAt: patch.updatedAt ?? nowIso() };
+    if (index === -1) state.jobs.push(job);
+    else state.jobs[index] = job;
+  }, env);
+  return job;
+}
+
+// Like upsertJob, but never demotes a job that was already cancelled.
+export function finishJob(workspaceRoot, jobId, terminal, env) {
+  let job = null;
+  updateState(workspaceRoot, (state) => {
+    const index = state.jobs.findIndex((entry) => entry.id === jobId);
+    const base = index === -1 ? { id: jobId, createdAt: nowIso() } : state.jobs[index];
+    const patch = base.status === "cancelled" ? { ...terminal, status: "cancelled", error: base.error ?? terminal.error } : terminal;
+    job = { ...base, ...patch, updatedAt: nowIso() };
     if (index === -1) state.jobs.push(job);
     else state.jobs[index] = job;
   }, env);
