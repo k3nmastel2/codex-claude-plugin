@@ -180,6 +180,7 @@ async function commandTask(argv) {
   const permission = options.full ? "full" : options.write ? "write" : "read";
   const claudeArgs = buildClaudeArgs({
     permission,
+    claudeVersion: getClaudeAvailability(env).detail,
     allow: options.allow ?? [],
     resumeSessionId,
     model: options.model ?? null,
@@ -222,6 +223,7 @@ async function commandReview(argv) {
   const schema = JSON.stringify(schemaBody);
   const claudeArgs = buildClaudeArgs({
     permission: "read",
+    claudeVersion: getClaudeAvailability(env).detail,
     model: options.model ?? null,
     effort: options.effort ?? null,
     name: `Codex → Claude review: ${target.label}`,

@@ -44,6 +44,7 @@ test("task prints the answer and trailer, records the job, and stores the reques
   const request = readJobFile(cwd, job.id, env).request;
   assert.equal(request.prompt, "explain the auth flow");
   assert.ok(request.claudeArgs.includes("dontAsk"));
+  assert.ok(request.claudeArgs.includes("--restricted"), "fixture reports 2.1.261, so read-only is restricted mode");
   assert.ok(request.claudeArgs.includes("--append-system-prompt"));
   assert.ok(request.claudeArgs.some((arg) => arg.startsWith("Codex → Claude: explain the auth")));
 });

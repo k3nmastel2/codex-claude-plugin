@@ -21,6 +21,7 @@ test("runClaude can pass the prompt in argv when asked", async () => {
   const run = await runClaude({ cwd: makeTempDir(), env: baseEnv({ CLAUDE_COMPANION_PROMPT_VIA_ARGV: "1" }), prompt: "hi there", claudeArgs: buildClaudeArgs({ permission: "read" }) });
   const { envelope } = parseResultEnvelope(run.stdout);
   assert.equal(envelope.fake.argv.at(-1), "hi there");
+  assert.equal(envelope.fake.argv.at(-2), "--");
   assert.equal(envelope.fake.stdinLength, 0);
 });
 
@@ -41,7 +42,7 @@ test("runClaude reports a missing binary", async () => {
 });
 
 test("availability and auth probes read the fixture", () => {
-  assert.deepEqual(getClaudeAvailability(baseEnv()), { available: true, detail: "2.1.238 (Claude Code)" });
+  assert.deepEqual(getClaudeAvailability(baseEnv()), { available: true, detail: "2.1.261 (Claude Code)" });
   assert.equal(getClaudeAuthStatus(baseEnv()).loggedIn, true);
   assert.equal(getClaudeAuthStatus(baseEnv({ FAKE_CLAUDE_LOGGED_IN: "false" })).loggedIn, false);
   assert.equal(getClaudeAvailability({ ...cleanEnv(), CLAUDE_COMPANION_CLAUDE_CMD: "definitely-not-a-binary-xyz" }).available, false);

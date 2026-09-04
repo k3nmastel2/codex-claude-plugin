@@ -5,7 +5,7 @@ const argv = process.argv.slice(2);
 const mode = process.env.FAKE_CLAUDE_MODE ?? "ok";
 
 if (argv[0] === "--version") {
-  console.log("2.1.238 (Claude Code)");
+  console.log("2.1.261 (Claude Code)");
   process.exit(0);
 }
 if (argv[0] === "auth" && argv[1] === "status") {

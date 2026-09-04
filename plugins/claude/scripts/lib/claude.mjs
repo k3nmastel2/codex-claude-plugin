@@ -11,6 +11,25 @@ export const VALID_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 // Deny rules beat allow rules in Claude Code, so listing the shell tools here keeps
 // read-only mode read-only even when the user's own settings pre-approve Bash.
 export const READ_ONLY_DISALLOWED = "Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit";
+export const EDIT_TOOLS = "Edit,Write,MultiEdit,NotebookEdit";
+// --restricted (Claude Code 2.1.248+) removes the shell/code tools outright, ignores user,
+// project and local settings files, and confines file tools to the working directories.
+export const RESTRICTED_MIN_VERSION = [2, 1, 248];
+
+export function parseClaudeVersion(detail) {
+  const match = String(detail ?? "").match(/(\d+)\.(\d+)\.(\d+)/);
+  return match ? match.slice(1, 4).map(Number) : null;
+}
+
+export function supportsRestricted(detail) {
+  const version = parseClaudeVersion(detail);
+  if (!version) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (version[index] > RESTRICTED_MIN_VERSION[index]) return true;
+    if (version[index] < RESTRICTED_MIN_VERSION[index]) return false;
+  }
+  return true;
+}
 export const INSTALL_HINT = "Install Claude Code (macOS/Linux: curl -fsSL https://claude.ai/install.sh | bash; Windows PowerShell: irm https://claude.ai/install.ps1 | iex), open a new terminal, then run `claude auth login`.";
 const PERMISSION_LEVELS = new Set(["read", "write", "full"]);
 const AUTH_PATTERN = /authenticat|oauth|not logged in|log in|login|api key|credential/i;
@@ -65,12 +84,21 @@ export function buildClaudeArgs(options = {}) {
   }
   const args = ["-p", "--output-format", "json"];
   if (permission === "read") {
-    // Deny rules beat allow rules, so any tool the caller explicitly allows (e.g. --allow "Bash(npm test:*)")
-    // is taken off the deny list; dontAsk still rejects every use of it outside the allowed pattern.
-    const allowedBases = new Set((options.allow ?? []).map((rule) => String(rule).replace(/\(.*$/, "").trim()));
-    const disallowed = READ_ONLY_DISALLOWED.split(",").filter((tool) => !allowedBases.has(tool));
+    const allowRules = options.allow ?? [];
     args.push("--permission-mode", "dontAsk");
-    if (disallowed.length) args.push("--disallowedTools", disallowed.join(","));
+    if (allowRules.length) {
+      // Restricted mode cannot re-add a single tool (--tools replaces the whole set), so an explicit
+      // --allow instead ignores the user's settings files: only the rule given here can permit the
+      // tool, and deny rules beat allow rules, so the allowed tool comes off the deny list.
+      const allowedBases = new Set(allowRules.map((rule) => String(rule).replace(/\(.*$/, "").trim()));
+      const disallowed = READ_ONLY_DISALLOWED.split(",").filter((tool) => !allowedBases.has(tool));
+      args.push("--setting-sources", "");
+      if (disallowed.length) args.push("--disallowedTools", disallowed.join(","));
+    } else if (supportsRestricted(options.claudeVersion)) {
+      args.push("--restricted", "--disallowedTools", EDIT_TOOLS);
+    } else {
+      args.push("--disallowedTools", READ_ONLY_DISALLOWED);
+    }
   }
   if (permission === "write") args.push("--permission-mode", "acceptEdits");
   if (permission === "full") args.push("--dangerously-skip-permissions");
@@ -84,7 +112,8 @@ export function buildClaudeArgs(options = {}) {
   if (options.name) args.push("--name", options.name);
   if (options.appendSystemPrompt) args.push("--append-system-prompt", options.appendSystemPrompt);
   if (options.jsonSchema) args.push("--json-schema", options.jsonSchema);
-  if (options.promptViaArgv != null) args.push(options.promptViaArgv);
+  // "--" ends option parsing: several claude options are variadic and would swallow the prompt.
+  if (options.promptViaArgv != null) args.push("--", options.promptViaArgv);
   return args;
 }
 
@@ -143,12 +172,18 @@ export function classifyFailure(run = {}) {
   return null;
 }
 
+export const WORKER_ENV = "CLAUDE_COMPANION_WORKER";
+
 export function runClaude({ cwd, env = process.env, prompt, claudeArgs, timeoutMs = 0, onSpawn = null }) {
   const resolved = resolveClaudeCommand(env);
   const viaArgv = String(env[PROMPT_VIA_ARGV_ENV] ?? "") === "1";
   const args = [...resolved.args, ...claudeArgs, ...(viaArgv ? [prompt] : [])];
   const childEnv = buildChildEnv(env);
-  const detached = process.platform !== "win32";
+  // A foreground companion puts Claude in its own process group so a timeout can kill the whole
+  // tree. A background worker keeps Claude in the worker's group instead: cancel signals that
+  // group, so the child dies with the worker even if it was never recorded.
+  const isWorker = String(env[WORKER_ENV] ?? "") === "1";
+  const detached = process.platform !== "win32" && !isWorker;
 
   return new Promise((resolve) => {
     let stdout = "";
@@ -157,16 +192,22 @@ export function runClaude({ cwd, env = process.env, prompt, claudeArgs, timeoutM
     let settled = false;
     let timer = null;
     let child;
-    let cleanup = null;
+    // If the companion is killed (Codex shell timeout, user abort, cancel), take Claude down with
+    // it so a --write or --full run never continues unattended. Registered BEFORE the spawn so
+    // there is no instant in which the child exists without a handler.
+    const cleanup = () => {
+      if (child?.pid) terminateProcessTree(child.pid, { graceMs: 300 });
+    };
+    process.once("SIGINT", cleanup);
+    process.once("SIGTERM", cleanup);
+    process.once("exit", cleanup);
     const finish = (payload) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      if (cleanup) {
-        process.off("SIGINT", cleanup);
-        process.off("SIGTERM", cleanup);
-        process.off("exit", cleanup);
-      }
+      process.off("SIGINT", cleanup);
+      process.off("SIGTERM", cleanup);
+      process.off("exit", cleanup);
       resolve({ pid: child?.pid ?? null, stdout, stderr, timedOut, ...payload });
     };
     try {
@@ -175,12 +216,6 @@ export function runClaude({ cwd, env = process.env, prompt, claudeArgs, timeoutM
       finish({ status: null, signal: null, error });
       return;
     }
-    // If Codex kills the companion (shell timeout, user abort), take Claude down with it
-    // so a --write or --full run never continues unattended.
-    cleanup = () => terminateProcessTree(child.pid, { graceMs: 300 });
-    process.once("SIGINT", cleanup);
-    process.once("SIGTERM", cleanup);
-    process.once("exit", cleanup);
     onSpawn?.(child.pid);
     if (timeoutMs > 0) {
       timer = setTimeout(() => {

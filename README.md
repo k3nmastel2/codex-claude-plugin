@@ -67,7 +67,7 @@ Claude's answer comes back into your Codex thread verbatim. Successful runs end 
 - **Node.js 20 or newer** on your PATH (`node --version`).
 - **git** (`git --version`). Reviews and workspace detection use it.
 - **Codex CLI 0.145 or newer**, or the Codex desktop app (`codex --version`).
-- **Claude Code CLI, logged in.** See below.
+- **Claude Code CLI 2.1.238 or newer, logged in.** 2.1.248 or newer enables restricted read-only mode. See below.
 
 ## Install
 
@@ -124,12 +124,12 @@ The companion detects the sandbox and prints exactly this if you forget.
 
 | Flag | Claude Code flags used | Claude can |
 |---|---|---|
-| (none) | `--permission-mode dontAsk --disallowedTools Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit` | Read, search, browse. Claude's shell and edit tools are denied, even if your own Claude settings pre-approve Bash. |
+| (none) | `--restricted --permission-mode dontAsk --disallowedTools Edit,Write,MultiEdit,NotebookEdit` | Read, search, browse. Restricted mode removes Claude's shell and code tools, ignores your user, project, and local settings files (so nothing you pre-approved elsewhere applies), and confines file tools to the workspace. On Claude Code older than 2.1.248 the companion falls back to denying `Bash` and `PowerShell` by rule. |
 | `--write` | `--permission-mode acceptEdits` | Also edit files inside the workspace. |
 | `--full` | `--dangerously-skip-permissions` | Anything, including shell commands. Use in repos you trust. |
-| `--allow "<rule>"` | `--allowedTools <rule>` | Re-enable one tool for one pattern, e.g. `--allow "Bash(npm test:*)"`. In read-only mode that tool comes off the deny list, which also lets any allow rule for it in your own Claude settings apply again; everything else stays denied. |
+| `--allow "<rule>"` | `--setting-sources "" --allowedTools <rule>` | Re-enable one tool for one pattern, e.g. `--allow "Bash(npm test:*)"`. Restricted mode cannot re-add a single tool, so the companion instead ignores your settings files entirely and allows exactly the rule you gave; everything else stays denied. |
 
-Read-only is enforced with Claude Code's own deny rules, not by sandboxing: your Claude Code settings, hooks, and MCP servers still load exactly as they do in a normal `claude` session, so a hook or MCP tool you have configured can still act. If you need stronger isolation, run Claude Code with a dedicated settings profile. `--model` and `--effort` pass straight through. Reviews are always read-only.
+In read-only mode your settings files are ignored, so hooks and permission rules defined there do not run; `CLAUDE.md`, plugins, and MCP servers still load, and any MCP tool call is denied unless you allow it. `--write` and `--full` load your settings as a normal `claude` session would, including any Bash allow rules you configured there. `--model` and `--effort` pass straight through. Reviews are always read-only.
 
 ## How it works
 

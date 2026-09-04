@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import process from "node:process";
-import { classifyFailure, parseResultEnvelope, runClaude } from "./claude.mjs";
+import { classifyFailure, parseResultEnvelope, runClaude, WORKER_ENV } from "./claude.mjs";
 import { describeProcess, isProcessAlive, terminateProcessTree } from "./process.mjs";
 import {
   finishJob, generateJobId, getJob, listJobs, readJobFile, resolveJobLogFile, setLastSession, transitionJob, upsertJob, writeJobFile
@@ -130,7 +130,7 @@ export function spawnBackgroundWorker(workspaceRoot, jobId, env = process.env, {
   const logFd = fs.openSync(job.logFile, "a", 0o600);
   const child = spawn(process.execPath, [entryPath, "__worker", jobId, "--cwd", workspaceRoot], {
     cwd: job.cwd,
-    env,
+    env: { ...env, [WORKER_ENV]: "1" },
     detached: true,
     stdio: ["ignore", logFd, logFd],
     windowsHide: true

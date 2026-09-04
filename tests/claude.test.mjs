@@ -10,13 +10,18 @@ const has = (args, ...seq) => {
   return index !== -1 && seq.every((value, offset) => args[index + offset] === value);
 };
 
-test("read-only args deny edits and never skip permissions", () => {
-  const args = buildClaudeArgs({ permission: "read" });
-  assert.deepEqual(args.slice(0, 3), ["-p", "--output-format", "json"]);
-  assert.ok(has(args, "--permission-mode", "dontAsk"));
-  assert.ok(has(args, "--disallowedTools", READ_ONLY_DISALLOWED));
-  assert.ok(READ_ONLY_DISALLOWED.split(",").includes("Bash"), "read-only denies Bash even if the user pre-approved it");
-  assert.equal(args.includes("--dangerously-skip-permissions"), false);
+test("read-only uses --restricted on a new enough CLI and a deny list on older ones", () => {
+  const modern = buildClaudeArgs({ permission: "read", claudeVersion: "2.1.261 (Claude Code)" });
+  assert.deepEqual(modern.slice(0, 3), ["-p", "--output-format", "json"]);
+  assert.ok(has(modern, "--permission-mode", "dontAsk"));
+  assert.ok(modern.includes("--restricted"));
+  assert.ok(has(modern, "--disallowedTools", "Edit,Write,MultiEdit,NotebookEdit"));
+  assert.equal(modern.includes("--dangerously-skip-permissions"), false);
+  const legacy = buildClaudeArgs({ permission: "read", claudeVersion: "2.1.238 (Claude Code)" });
+  assert.equal(legacy.includes("--restricted"), false);
+  assert.ok(has(legacy, "--disallowedTools", READ_ONLY_DISALLOWED));
+  assert.ok(READ_ONLY_DISALLOWED.split(",").includes("Bash"), "legacy read-only denies Bash by rule");
+  assert.equal(buildClaudeArgs({ permission: "read" }).includes("--restricted"), false, "unknown version falls back to the deny list");
 });
 
 test("write and full permission levels", () => {
@@ -49,9 +54,10 @@ test("invalid effort and permission throw", () => {
   assert.throws(() => buildClaudeArgs({ permission: "yolo" }), /Unsupported permission level/);
 });
 
-test("promptViaArgv places the prompt last", () => {
+test("promptViaArgv places the prompt last, after --", () => {
   const args = buildClaudeArgs({ permission: "read", promptViaArgv: "hello world" });
   assert.equal(args[args.length - 1], "hello world");
+  assert.equal(args[args.length - 2], "--");
 });
 
 test("parseResultEnvelope takes the last result line and ignores noise", () => {
@@ -98,10 +104,23 @@ test("resolveWindowsClaude reads the npm shim to find the real script", () => {
   assert.equal(unreadable, null, "an unsupported shim is never routed through a shell");
 });
 
-test("read-only keeps an explicitly allowed tool off the deny list", () => {
-  const args = buildClaudeArgs({ permission: "read", allow: ["Bash(npm test:*)"] });
+test("read-only with --allow ignores settings files and allows exactly the given rule", () => {
+  const args = buildClaudeArgs({ permission: "read", claudeVersion: "2.1.261 (Claude Code)", allow: ["Bash(npm test:*)"] });
+  assert.equal(args.includes("--restricted"), false, "restricted cannot re-add a single tool");
+  assert.ok(has(args, "--setting-sources", ""), "user/project/local allow rules must not apply");
   const deny = args[args.indexOf("--disallowedTools") + 1];
   assert.equal(deny.split(",").includes("Bash"), false, "deny would beat the allow rule");
   assert.ok(deny.split(",").includes("Edit"));
   assert.ok(has(args, "--allowedTools", "Bash(npm test:*)"));
+});
+
+test("version helpers and the argv prompt separator", async () => {
+  const { parseClaudeVersion, supportsRestricted } = await import("../plugins/claude/scripts/lib/claude.mjs");
+  assert.deepEqual(parseClaudeVersion("2.1.261 (Claude Code)"), [2, 1, 261]);
+  assert.equal(parseClaudeVersion("not found"), null);
+  assert.equal(supportsRestricted("2.1.248 (Claude Code)"), true);
+  assert.equal(supportsRestricted("2.1.247 (Claude Code)"), false);
+  assert.equal(supportsRestricted("3.0.0"), true);
+  const args = buildClaudeArgs({ permission: "read", allow: ["Bash(x:*)"], promptViaArgv: "--looks-like-a-flag" });
+  assert.deepEqual(args.slice(-2), ["--", "--looks-like-a-flag"]);
 });
