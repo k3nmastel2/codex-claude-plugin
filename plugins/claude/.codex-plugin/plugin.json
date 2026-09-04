@@ -1,0 +1,32 @@
+{
+  "name": "claude",
+  "version": "0.1.0",
+  "description": "Delegate tasks, investigations, and code reviews to Claude Code through its local CLI. No API key required.",
+  "author": {
+    "name": "Ken Nguyen",
+    "url": "https://github.com/k3nmastel2"
+  },
+  "homepage": "https://github.com/k3nmastel2/codex-claude-plugin",
+  "repository": "https://github.com/k3nmastel2/codex-claude-plugin",
+  "license": "MIT",
+  "keywords": ["claude", "claude-code", "delegation", "code-review", "second-opinion"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Claude",
+    "shortDescription": "Hand work to Claude Code from Codex",
+    "longDescription": "Use Claude Code from inside Codex the same way the Codex plugin works inside Claude Code: delegate a task or investigation, request a structured code review of your working tree or branch, run long jobs in the background, and resume the last Claude thread. Talks to the claude CLI you already have installed and logged in; nothing is sent to an API from this plugin.",
+    "developerName": "Ken Nguyen",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://github.com/k3nmastel2/codex-claude-plugin",
+    "defaultPrompt": [
+      "Use $claude-task to get a second opinion on this bug",
+      "Use $claude-review to review my working tree",
+      "Use $claude-setup to check Claude Code is ready"
+    ],
+    "brandColor": "#6B4FBB",
+    "composerIcon": "./assets/claude-plugin.svg",
+    "logo": "./assets/claude-plugin.svg",
+    "screenshots": []
+  }
+}
