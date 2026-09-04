@@ -177,7 +177,8 @@ export const WORKER_ENV = "CLAUDE_COMPANION_WORKER";
 export function runClaude({ cwd, env = process.env, prompt, claudeArgs, timeoutMs = 0, onSpawn = null }) {
   const resolved = resolveClaudeCommand(env);
   const viaArgv = String(env[PROMPT_VIA_ARGV_ENV] ?? "") === "1";
-  const args = [...resolved.args, ...claudeArgs, ...(viaArgv ? [prompt] : [])];
+  // "--" ends option parsing: several claude options are variadic and would swallow the prompt.
+  const args = [...resolved.args, ...claudeArgs, ...(viaArgv ? ["--", prompt] : [])];
   const childEnv = buildChildEnv(env);
   // A foreground companion puts Claude in its own process group so a timeout can kill the whole
   // tree. A background worker keeps Claude in the worker's group instead: cancel signals that
