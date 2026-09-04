@@ -1,0 +1,8 @@
+interface:
+  display_name: "Claude Task"
+  short_description: "Delegate a task or investigation to Claude Code"
+  default_prompt: "Use $claude-task to get Claude's take on this bug and propose a fix."
+  brand_color: "#6B4FBB"
+
+policy:
+  allow_implicit_invocation: true

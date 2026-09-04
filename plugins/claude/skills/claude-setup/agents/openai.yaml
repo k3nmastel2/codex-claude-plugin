@@ -1,0 +1,8 @@
+interface:
+  display_name: "Claude Setup"
+  short_description: "Verify Claude Code is installed and logged in"
+  default_prompt: "Use $claude-setup to check that Claude Code is ready for delegation."
+  brand_color: "#6B4FBB"
+
+policy:
+  allow_implicit_invocation: true

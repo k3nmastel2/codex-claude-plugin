@@ -1,0 +1,8 @@
+interface:
+  display_name: "Claude Review"
+  short_description: "Structured code review from Claude Code"
+  default_prompt: "Use $claude-review to review my working tree before I open a PR."
+  brand_color: "#6B4FBB"
+
+policy:
+  allow_implicit_invocation: true
