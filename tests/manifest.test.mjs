@@ -31,4 +31,5 @@ test("review schema requires verdict, summary, findings, next_steps", () => {
   const schema = readJson("plugins/claude/schemas/review-output.schema.json");
   assert.deepEqual(schema.required, ["verdict", "summary", "findings", "next_steps"]);
   assert.deepEqual(schema.properties.verdict.enum, ["approve", "needs-attention"]);
+  assert.equal("$schema" in schema, false, "Claude rejects an explicit 2020-12 meta-schema URI");
 });

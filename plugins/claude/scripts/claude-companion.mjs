@@ -184,7 +184,9 @@ async function commandReview(argv) {
   }
   const focus = positionals.join(" ").trim();
   const prompt = buildReviewPrompt(PLUGIN_ROOT, { adversarial: Boolean(options.adversarial), targetLabel: target.label, focus, context: context.text });
-  const schema = JSON.stringify(JSON.parse(fs.readFileSync(REVIEW_SCHEMA_PATH, "utf8")));
+  // Claude's --json-schema validator rejects an explicit 2020-12 "$schema" meta-schema URI, so never send one.
+  const { $schema: _metaSchema, ...schemaBody } = JSON.parse(fs.readFileSync(REVIEW_SCHEMA_PATH, "utf8"));
+  const schema = JSON.stringify(schemaBody);
   const claudeArgs = buildClaudeArgs({
     permission: "read",
     model: options.model ?? null,

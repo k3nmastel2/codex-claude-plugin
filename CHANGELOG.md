@@ -11,3 +11,5 @@
 - Background jobs with `status`, `result`, and `cancel`; process-tree termination on macOS, Linux, and Windows.
 - Loop guard: refuses to nest under a Claude Code session or beyond `CLAUDE_COMPANION_MAX_DEPTH`.
 - Dependency-free test suite with a fake `claude` binary; CI on ubuntu, macos, and windows.
+
+Verified on macOS 2026-09-04 against Claude Code 2.1.238 and Codex CLI 0.145.0: `setup` reports ready once `claude auth login` has run; `task` delivers the prompt on stdin and returns the answer with a session trailer; `--resume` continues the same Claude session; `--background` jobs complete and `status`/`result` read them back; the nesting guard refuses to run inside a Claude Code session; and `$claude-task` invoked from a real `codex exec` thread returns Claude's answer verbatim.

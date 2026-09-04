@@ -112,6 +112,9 @@ test("review renders structured findings and rejects non-git dirs", () => {
   assert.ok(result.stdout.indexOf("[HIGH]") < result.stdout.indexOf("[LOW]"));
   const request = readJobFile(repo, listJobs(repo, env)[0].id, env).request;
   assert.ok(request.claudeArgs.includes("--json-schema"));
+  const schemaArg = request.claudeArgs[request.claudeArgs.indexOf("--json-schema") + 1];
+  assert.equal(schemaArg.includes("$schema"), false, "Claude rejects an explicit 2020-12 meta-schema URI");
+  assert.equal(JSON.parse(schemaArg).required[0], "verdict");
   assert.ok(request.claudeArgs.includes("dontAsk"));
   assert.match(request.prompt, /adversarial/i);
   assert.match(request.prompt, /User focus: focus on auth/);

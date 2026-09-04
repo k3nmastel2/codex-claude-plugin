@@ -106,7 +106,8 @@ export function classifyFailure(run = {}) {
   }
   if (!envelope) {
     if (run.status !== 0 && run.status != null) {
-      const detail = tail(run.stderr) || tail(run.stdout);
+      // stderr is rendered separately by the caller; only fall back to stdout here.
+      const detail = tail(run.stderr) ? "" : tail(run.stdout);
       return { kind: "exit", message: `claude exited with code ${run.status}${run.signal ? ` (${run.signal})` : ""}.${detail ? `\n${detail}` : ""}` };
     }
     return { kind: "parse", message: `Claude produced no JSON result envelope.${tail(run.stdout) ? `\n${tail(run.stdout)}` : ""}` };
