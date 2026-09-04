@@ -1,0 +1,88 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import process from "node:process";
+import {
+  buildClaudeArgs, parseResultEnvelope, classifyFailure, resolveClaudeCommand, resolveWindowsClaude, READ_ONLY_DISALLOWED
+} from "../plugins/claude/scripts/lib/claude.mjs";
+
+const has = (args, ...seq) => {
+  const index = args.indexOf(seq[0]);
+  return index !== -1 && seq.every((value, offset) => args[index + offset] === value);
+};
+
+test("read-only args deny edits and never skip permissions", () => {
+  const args = buildClaudeArgs({ permission: "read" });
+  assert.deepEqual(args.slice(0, 3), ["-p", "--output-format", "json"]);
+  assert.ok(has(args, "--permission-mode", "dontAsk"));
+  assert.ok(has(args, "--disallowedTools", READ_ONLY_DISALLOWED));
+  assert.equal(args.includes("--dangerously-skip-permissions"), false);
+});
+
+test("write and full permission levels", () => {
+  assert.ok(has(buildClaudeArgs({ permission: "write" }), "--permission-mode", "acceptEdits"));
+  const full = buildClaudeArgs({ permission: "full" });
+  assert.ok(full.includes("--dangerously-skip-permissions"));
+  assert.equal(full.includes("--permission-mode"), false);
+});
+
+test("optional flags are appended only when present", () => {
+  const args = buildClaudeArgs({
+    permission: "read", allow: ["Bash(npm test:*)", "WebFetch"], resumeSessionId: "s-1", model: "opus", effort: "high",
+    maxTurns: 5, maxBudgetUsd: 1.5, addDirs: ["../lib"], name: "Codex → Claude: hi", appendSystemPrompt: "ctx", jsonSchema: "{}"
+  });
+  assert.ok(has(args, "--allowedTools", "Bash(npm test:*),WebFetch"));
+  assert.ok(has(args, "--resume", "s-1"));
+  assert.ok(has(args, "--model", "opus"));
+  assert.ok(has(args, "--effort", "high"));
+  assert.ok(has(args, "--max-turns", "5"));
+  assert.ok(has(args, "--max-budget-usd", "1.5"));
+  assert.ok(has(args, "--add-dir", "../lib"));
+  assert.ok(has(args, "--name", "Codex → Claude: hi"));
+  assert.ok(has(args, "--append-system-prompt", "ctx"));
+  assert.ok(has(args, "--json-schema", "{}"));
+  assert.equal(buildClaudeArgs({ permission: "read" }).includes("--model"), false);
+});
+
+test("invalid effort and permission throw", () => {
+  assert.throws(() => buildClaudeArgs({ permission: "read", effort: "turbo" }), /Unsupported effort/);
+  assert.throws(() => buildClaudeArgs({ permission: "yolo" }), /Unsupported permission level/);
+});
+
+test("promptViaArgv places the prompt last", () => {
+  const args = buildClaudeArgs({ permission: "read", promptViaArgv: "hello world" });
+  assert.equal(args[args.length - 1], "hello world");
+});
+
+test("parseResultEnvelope takes the last result line and ignores noise", () => {
+  const stdout = `noise\n{"type":"system"}\n{"type":"result","result":"ok","session_id":"s"}\n`;
+  assert.equal(parseResultEnvelope(stdout).envelope.result, "ok");
+  assert.equal(parseResultEnvelope("garbage").envelope, null);
+  assert.match(parseResultEnvelope("").error, /no JSON result/i);
+});
+
+test("classifyFailure maps every failure kind", () => {
+  assert.equal(classifyFailure({ envelope: { is_error: false }, status: 0 }), null);
+  assert.equal(classifyFailure({ timedOut: true, timeoutMs: 1000 }).kind, "timeout");
+  assert.equal(classifyFailure({ error: Object.assign(new Error("x"), { code: "ENOENT" }) }).kind, "missing");
+  const auth = classifyFailure({ envelope: { is_error: true, result: "Failed to authenticate: OAuth session expired" }, status: 1 });
+  assert.equal(auth.kind, "auth");
+  assert.match(auth.message, /claude auth login/);
+  assert.equal(classifyFailure({ envelope: { is_error: true, result: "rate limited" }, status: 1 }).kind, "api");
+  assert.equal(classifyFailure({ envelope: null, status: 2, stderr: "boom" }).kind, "exit");
+  assert.equal(classifyFailure({ envelope: null, status: 0, stdout: "not json" }).kind, "parse");
+});
+
+test("resolveClaudeCommand honours the env override", () => {
+  const resolved = resolveClaudeCommand({ CLAUDE_COMPANION_CLAUDE_CMD: `"${process.execPath}" /x/fake.mjs` });
+  assert.deepEqual(resolved, { command: process.execPath, args: ["/x/fake.mjs"], shell: false });
+  assert.deepEqual(resolveClaudeCommand({}, { platform: "darwin" }), { command: "claude", args: [], shell: false });
+});
+
+test("resolveWindowsClaude prefers .exe, then unwraps npm .cmd shims, else null", () => {
+  const exe = resolveWindowsClaude("C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd\r\nC:\\Users\\me\\.local\\bin\\claude.exe\r\n", () => true);
+  assert.deepEqual(exe, { command: "C:\\Users\\me\\.local\\bin\\claude.exe", args: [], shell: false });
+  const cli = "C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js";
+  const cmd = resolveWindowsClaude("C:\\Users\\me\\AppData\\Roaming\\npm\\claude.cmd\r\n", (p) => p === cli);
+  assert.deepEqual(cmd, { command: process.execPath, args: [cli], shell: false });
+  assert.equal(resolveWindowsClaude("", () => false), null);
+});
