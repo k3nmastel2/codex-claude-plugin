@@ -129,7 +129,7 @@ The companion detects the sandbox and prints exactly this if you forget.
 | `--full` | `--dangerously-skip-permissions` | Anything, including shell commands. Use in repos you trust. |
 | `--allow "<rule>"` | `--restricted --strict-mcp-config --permission-mode dontAsk --tools Read,Glob,Grep,WebSearch,ToolSearch,<tool> --disallowedTools <edit tools> --allowedTools <rule>` | Re-enable one tool for one pattern, e.g. `--allow "Bash(npm test:*)"`. Restricted mode stays on (settings ignored, workspace confinement kept), MCP servers are skipped, and only the read tools plus the named tool exist; `dontAsk` denies every use outside your pattern. On Claude Code older than 2.1.248 the companion uses `--setting-sources ""` with the same deny and allow rules instead. |
 
-In read-only mode your settings files are ignored, so hooks and permission rules defined there do not run; `CLAUDE.md`, plugins, and MCP servers still load, and any MCP tool call is denied unless you allow it. `--write` and `--full` load your settings as a normal `claude` session would, including any Bash allow rules you configured there. `--model` and `--effort` pass straight through. Reviews are always read-only.
+In read-only mode your settings files are ignored, so hooks and permission rules defined there do not run; `CLAUDE.md` and plugins still load. Without `--allow`, MCP servers load too but every MCP tool call is denied; with `--allow`, MCP servers are skipped entirely (`--strict-mcp-config`). `--write` and `--full` load your settings as a normal `claude` session would, including any Bash allow rules you configured there. `--model` and `--effort` pass straight through. Reviews are always read-only.
 
 ## How it works
 
