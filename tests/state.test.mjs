@@ -112,10 +112,10 @@ test("finishJob never demotes a cancelled job and orphaned jobs are reconciled",
 
 test("concurrent processes updating the same workspace never lose a job", async () => {
   const { spawn } = await import("node:child_process");
-  const { fileURLToPath } = await import("node:url");
   const env = withStateDir();
   const ws = makeTempDir();
-  const stateModule = fileURLToPath(new URL("../plugins/claude/scripts/lib/state.mjs", import.meta.url));
+  // Pass a file:// URL, not a path: on Windows a drive-letter path is an invalid import specifier.
+  const stateModule = new URL("../plugins/claude/scripts/lib/state.mjs", import.meta.url).href;
   const script = `import(${JSON.stringify(stateModule)}).then((m) => { for (let i = 0; i < 5; i += 1) m.upsertJob(process.argv[1], { id: process.argv[2] + "-" + i, kind: "task", status: "queued" }, process.env); });`;
   const children = Array.from({ length: 6 }, (_, index) =>
     new Promise((resolve) => spawn(process.execPath, ["--input-type=module", "-e", script, ws, `job-p${index}`], { env, stdio: "ignore" }).on("exit", resolve))
