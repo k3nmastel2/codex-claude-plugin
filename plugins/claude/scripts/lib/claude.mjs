@@ -12,9 +12,28 @@ export const VALID_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 // read-only mode read-only even when the user's own settings pre-approve Bash.
 export const READ_ONLY_DISALLOWED = "Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit";
 export const EDIT_TOOLS = "Edit,Write,MultiEdit,NotebookEdit";
+// Under --restricted, --tools REPLACES the built-in tool set (verified live), so an --allow rule for a
+// removed tool re-enables it by naming the read-only set plus that tool. Unknown names are ignored by
+// the CLI, so a renamed tool degrades to "unavailable" rather than an error.
+export const RESTRICTED_READ_TOOLS = ["Read", "Glob", "Grep", "WebSearch", "ToolSearch"];
 // --restricted (Claude Code 2.1.248+) removes the shell/code tools outright, ignores user,
 // project and local settings files, and confines file tools to the working directories.
 export const RESTRICTED_MIN_VERSION = [2, 1, 248];
+// --setting-sources and the JSON result envelope used here are documented from 2.1.238.
+export const MIN_CLAUDE_VERSION = [2, 1, 238];
+
+function atLeast(version, minimum) {
+  for (let index = 0; index < 3; index += 1) {
+    if (version[index] > minimum[index]) return true;
+    if (version[index] < minimum[index]) return false;
+  }
+  return true;
+}
+
+export function meetsMinimumVersion(detail) {
+  const version = parseClaudeVersion(detail);
+  return version ? atLeast(version, MIN_CLAUDE_VERSION) : false;
+}
 
 export function parseClaudeVersion(detail) {
   const match = String(detail ?? "").match(/(\d+)\.(\d+)\.(\d+)/);
@@ -23,12 +42,7 @@ export function parseClaudeVersion(detail) {
 
 export function supportsRestricted(detail) {
   const version = parseClaudeVersion(detail);
-  if (!version) return false;
-  for (let index = 0; index < 3; index += 1) {
-    if (version[index] > RESTRICTED_MIN_VERSION[index]) return true;
-    if (version[index] < RESTRICTED_MIN_VERSION[index]) return false;
-  }
-  return true;
+  return version ? atLeast(version, RESTRICTED_MIN_VERSION) : false;
 }
 export const INSTALL_HINT = "Install Claude Code (macOS/Linux: curl -fsSL https://claude.ai/install.sh | bash; Windows PowerShell: irm https://claude.ai/install.ps1 | iex), open a new terminal, then run `claude auth login`.";
 const PERMISSION_LEVELS = new Set(["read", "write", "full"]);
@@ -87,17 +101,25 @@ export function buildClaudeArgs(options = {}) {
     const allowRules = options.allow ?? [];
     args.push("--permission-mode", "dontAsk");
     if (allowRules.length) {
-      // Restricted mode cannot re-add a single tool (--tools replaces the whole set), so an explicit
-      // --allow instead ignores the user's settings files: only the rule given here can permit the
-      // tool, and deny rules beat allow rules, so the allowed tool comes off the deny list.
-      const allowedBases = new Set(allowRules.map((rule) => String(rule).replace(/\(.*$/, "").trim()));
-      const disallowed = READ_ONLY_DISALLOWED.split(",").filter((tool) => !allowedBases.has(tool));
-      args.push("--setting-sources", "");
+      // Deny rules beat allow rules, so the allowed tool comes off the deny list; dontAsk still rejects
+      // every use of it outside the allowed pattern.
+      const allowedBases = [...new Set(allowRules.map((rule) => String(rule).replace(/\(.*$/, "").trim()).filter(Boolean))];
+      const disallowed = READ_ONLY_DISALLOWED.split(",").filter((tool) => !allowedBases.includes(tool));
+      if (supportsRestricted(options.claudeVersion)) {
+        // Keep restricted mode's settings isolation and workspace confinement; restore only the
+        // read-only tools plus the allowed one, and skip MCP servers so no other tool can act.
+        const tools = [...new Set([...RESTRICTED_READ_TOOLS, ...allowedBases])];
+        args.push("--restricted", "--strict-mcp-config", "--tools", tools.join(","));
+      } else {
+        // Older CLIs: ignore settings files so only the rule given here can permit the tool.
+        args.push("--setting-sources", "");
+      }
       if (disallowed.length) args.push("--disallowedTools", disallowed.join(","));
     } else if (supportsRestricted(options.claudeVersion)) {
       args.push("--restricted", "--disallowedTools", EDIT_TOOLS);
     } else {
-      args.push("--disallowedTools", READ_ONLY_DISALLOWED);
+      // Older CLIs: no --restricted, so ignore settings files and deny the shell and edit tools by rule.
+      args.push("--setting-sources", "", "--disallowedTools", READ_ONLY_DISALLOWED);
     }
   }
   if (permission === "write") args.push("--permission-mode", "acceptEdits");

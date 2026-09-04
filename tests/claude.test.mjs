@@ -104,14 +104,21 @@ test("resolveWindowsClaude reads the npm shim to find the real script", () => {
   assert.equal(unreadable, null, "an unsupported shim is never routed through a shell");
 });
 
-test("read-only with --allow ignores settings files and allows exactly the given rule", () => {
+test("read-only with --allow keeps restricted mode and names only the read tools plus the allowed one", () => {
   const args = buildClaudeArgs({ permission: "read", claudeVersion: "2.1.261 (Claude Code)", allow: ["Bash(npm test:*)"] });
-  assert.equal(args.includes("--restricted"), false, "restricted cannot re-add a single tool");
-  assert.ok(has(args, "--setting-sources", ""), "user/project/local allow rules must not apply");
+  assert.ok(args.includes("--restricted"));
+  assert.ok(args.includes("--strict-mcp-config"));
+  const tools = args[args.indexOf("--tools") + 1].split(",");
+  assert.ok(["Read", "Glob", "Grep", "Bash"].every((tool) => tools.includes(tool)));
+  assert.equal(tools.includes("Edit"), false);
+  assert.equal(args.includes("--setting-sources"), false);
   const deny = args[args.indexOf("--disallowedTools") + 1];
   assert.equal(deny.split(",").includes("Bash"), false, "deny would beat the allow rule");
   assert.ok(deny.split(",").includes("Edit"));
   assert.ok(has(args, "--allowedTools", "Bash(npm test:*)"));
+  const legacy = buildClaudeArgs({ permission: "read", claudeVersion: "2.1.240 (Claude Code)", allow: ["Bash(npm test:*)"] });
+  assert.equal(legacy.includes("--restricted"), false);
+  assert.ok(has(legacy, "--setting-sources", ""), "old CLIs isolate settings instead");
 });
 
 test("version helpers and the argv prompt separator", async () => {
@@ -123,4 +130,13 @@ test("version helpers and the argv prompt separator", async () => {
   assert.equal(supportsRestricted("3.0.0"), true);
   const args = buildClaudeArgs({ permission: "read", allow: ["Bash(x:*)"], promptViaArgv: "--looks-like-a-flag" });
   assert.deepEqual(args.slice(-2), ["--", "--looks-like-a-flag"]);
+});
+
+test("legacy read-only fallback also ignores settings files; minimum version helper", async () => {
+  const { meetsMinimumVersion } = await import("../plugins/claude/scripts/lib/claude.mjs");
+  const legacy = buildClaudeArgs({ permission: "read", claudeVersion: "2.1.240 (Claude Code)" });
+  assert.ok(has(legacy, "--setting-sources", ""), "pre-approved settings rules must not apply on old CLIs either");
+  assert.equal(meetsMinimumVersion("2.1.238 (Claude Code)"), true);
+  assert.equal(meetsMinimumVersion("2.1.237 (Claude Code)"), false);
+  assert.equal(meetsMinimumVersion("garbage"), false);
 });

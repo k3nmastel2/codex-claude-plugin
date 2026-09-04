@@ -5,7 +5,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { parseArgs } from "./lib/args.mjs";
-import { buildClaudeArgs, getClaudeAuthStatus, getClaudeAvailability, INSTALL_HINT } from "./lib/claude.mjs";
+import { buildClaudeArgs, getClaudeAuthStatus, getClaudeAvailability, INSTALL_HINT, meetsMinimumVersion, MIN_CLAUDE_VERSION, supportsRestricted } from "./lib/claude.mjs";
 import { detectNesting, detectSandbox } from "./lib/env.mjs";
 import { collectReviewContext, resolveReviewTarget } from "./lib/git.mjs";
 import {
@@ -138,6 +138,8 @@ async function commandSetup(argv) {
   const node = nodeStatus();
   const git = binaryAvailable("git", ["--version"], { env });
   const claude = getClaudeAvailability(env);
+  const versionOk = claude.available ? meetsMinimumVersion(claude.detail) : false;
+  const restricted = claude.available ? supportsRestricted(claude.detail) : false;
   const auth = claude.available ? getClaudeAuthStatus(env) : { loggedIn: false, detail: "claude not found" };
   const nesting = detectNesting(env);
   const sandbox = detectSandbox(env);
@@ -146,13 +148,16 @@ async function commandSetup(argv) {
   if (!git.available) nextSteps.push("Install git (reviews and workspace detection need it): https://git-scm.com/downloads");
   if (!claude.available) {
     nextSteps.push(INSTALL_HINT);
+  } else if (!versionOk) {
+    nextSteps.push(`Claude Code ${claude.detail} is older than the required ${MIN_CLAUDE_VERSION.join(".")}. Run \`claude update\` (or reinstall), then re-run setup.`);
   } else if (!auth.loggedIn) {
     nextSteps.push("Run `claude auth login` in your own terminal (or export ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN), then re-run setup.");
   }
   if (nesting.nested) nextSteps.push(`Nesting guard is active: ${nesting.reason}`);
   if (sandbox.networkDisabled) nextSteps.push(sandbox.reason);
-  const ready = node.available && git.available && claude.available && auth.loggedIn && !nesting.nested && !sandbox.networkDisabled;
-  const report = { ready, cwd, node, git, claude, auth, nesting, sandbox, nextSteps };
+  if (claude.available && versionOk && !restricted) nextSteps.push("Optional: update Claude Code to 2.1.248 or newer to get restricted read-only mode (currently using deny rules).");
+  const ready = node.available && git.available && claude.available && versionOk && auth.loggedIn && !nesting.nested && !sandbox.networkDisabled;
+  const report = { ready, cwd, node, git, claude: { ...claude, versionOk, restricted }, auth, nesting, sandbox, nextSteps };
   emit(Boolean(options.json), report, renderSetupReport(report));
   if (!report.ready) process.exitCode = 1;
 }

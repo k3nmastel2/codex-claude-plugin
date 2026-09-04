@@ -188,3 +188,13 @@ test("allow-nested waives CLAUDECODE but never the depth limit", () => {
   assert.equal(result.status, 1);
   assert.match(result.stdout, /CLAUDE_COMPANION_MAX_DEPTH/);
 });
+
+test("setup refuses a Claude Code older than the documented minimum", () => {
+  const old = cli(makeTempDir(), envFor({ FAKE_CLAUDE_VERSION: "2.1.200 (Claude Code)" }), ["setup", "--json"]);
+  assert.equal(old.status, 1);
+  assert.equal(json(old).claude.versionOk, false);
+  assert.ok(json(old).nextSteps.some((step) => /claude update/.test(step)));
+  const current = json(cli(makeTempDir(), envFor(), ["setup", "--json"]));
+  assert.equal(current.claude.versionOk, true);
+  assert.equal(current.claude.restricted, true);
+});
