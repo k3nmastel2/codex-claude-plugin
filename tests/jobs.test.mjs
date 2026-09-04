@@ -69,3 +69,16 @@ test("timeouts fail the job and denials are reported", async () => {
   assert.equal(deniedPayload.ok, true);
   assert.equal(deniedPayload.permissionDenials[0].tool_name, "Edit");
 });
+
+test("a job cancelled before its worker starts never runs Claude", async () => {
+  const { cancelJob } = await import("../plugins/claude/scripts/lib/jobs.mjs");
+  const env = envFor();
+  const ws = makeTempDir();
+  const job = createJob(ws, { kind: "task", cwd: ws, promptExcerpt: "x", background: true, request: request() }, env);
+  assert.equal(cancelJob(ws, job.id, env).ok, true);
+  const payload = await executeJob(ws, job.id, env);
+  assert.equal(payload.ok, false);
+  assert.equal(payload.error.kind, "cancelled");
+  assert.equal(getJob(ws, job.id, env).status, "cancelled");
+  assert.equal(readJobFile(ws, job.id, env).status, "cancelled");
+});

@@ -97,3 +97,11 @@ test("resolveWindowsClaude reads the npm shim to find the real script", () => {
   const unreadable = resolveWindowsClaude(`${shimPath}\r\n`, () => false, () => { throw new Error("nope"); });
   assert.equal(unreadable, null, "an unsupported shim is never routed through a shell");
 });
+
+test("read-only keeps an explicitly allowed tool off the deny list", () => {
+  const args = buildClaudeArgs({ permission: "read", allow: ["Bash(npm test:*)"] });
+  const deny = args[args.indexOf("--disallowedTools") + 1];
+  assert.equal(deny.split(",").includes("Bash"), false, "deny would beat the allow rule");
+  assert.ok(deny.split(",").includes("Edit"));
+  assert.ok(has(args, "--allowedTools", "Bash(npm test:*)"));
+});

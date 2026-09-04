@@ -30,9 +30,8 @@ export function runCommand(command, args = [], options = {}) {
 }
 
 export function binaryAvailable(command, versionArgs = ["--version"], options = {}) {
-  // A shell is needed on Windows only to resolve bare names such as `git` to git.exe.
-  // Absolute paths (which may contain spaces) are spawned directly so they need no quoting.
-  const useShell = options.shell ?? (process.platform === "win32" && !/[\\/]/.test(command));
+  // Never use a shell: libuv resolves bare names such as `git` via PATH and PATHEXT on Windows too.
+  const useShell = options.shell ?? false;
   const result = runCommand(command, versionArgs, {
     cwd: options.cwd,
     env: options.env,

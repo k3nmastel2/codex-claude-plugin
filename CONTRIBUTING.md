@@ -19,7 +19,7 @@ codex plugin marketplace add /path/to/codex-claude-plugin   # once
 codex plugin add claude@codex-claude-plugin                    # after every edit; refreshes the cached copy
 ```
 
-If Codex still shows the old version, run `codex plugin remove claude` and add it again. Then start a new Codex thread; Codex only reloads skills at thread start.
+On Codex 0.145 `codex plugin add` refreshes the cached copy; if Codex still shows the old files, run `codex plugin remove claude` and add it again, or `codex plugin marketplace upgrade` for a Git-sourced marketplace. Then start a new Codex thread; Codex only reloads skills at thread start.
 
 ## Where things live
 

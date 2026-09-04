@@ -51,3 +51,25 @@ test("cancel kills a running background job", async () => {
   assert.equal(cancelJob(ws, job.id, env).ok, false);
   assert.equal(cancelJob(ws, "job-missing", env).ok, false);
 });
+
+test("cancel leaves a recycled pid alone when the process is not this job's", async () => {
+  const { spawn } = await import("node:child_process");
+  const { processBelongsToJob } = await import("../plugins/claude/scripts/lib/jobs.mjs");
+  const env = envFor();
+  const ws = makeTempDir();
+  const bystander = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const job = createJob(ws, { kind: "task", cwd: ws, promptExcerpt: "stale", background: true, request: request() }, env);
+  const { upsertJob } = await import("../plugins/claude/scripts/lib/state.mjs");
+  upsertJob(ws, { id: job.id, status: "running", workerPid: bystander.pid }, env);
+  const report = cancelJob(ws, job.id, env);
+  assert.equal(report.ok, true);
+  if (process.platform !== "win32") {
+    assert.match(report.message, /no longer belongs/);
+    assert.equal(processBelongsToJob(bystander.pid, "worker", job.id), false);
+    assert.equal(bystander.exitCode, null, "bystander must still be alive");
+  }
+  bystander.kill();
+  assert.equal(processBelongsToJob(process.pid, "worker", "job-none", `node claude-companion.mjs __worker job-none --cwd /x`), true);
+  assert.equal(processBelongsToJob(process.pid, "claude", "job-none", `claude -p --output-format json --name Codex → Claude: hi`), true);
+});

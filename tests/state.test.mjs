@@ -109,3 +109,34 @@ test("finishJob never demotes a cancelled job and orphaned jobs are reconciled",
   assert.match(getJob(ws, "job-o", env).error, /worker exited/);
   assert.equal(buildStatusSnapshot(ws, {}, env).running.length, 0);
 });
+
+test("concurrent processes updating the same workspace never lose a job", async () => {
+  const { spawn } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const env = withStateDir();
+  const ws = makeTempDir();
+  const stateModule = fileURLToPath(new URL("../plugins/claude/scripts/lib/state.mjs", import.meta.url));
+  const script = `import(${JSON.stringify(stateModule)}).then((m) => { for (let i = 0; i < 5; i += 1) m.upsertJob(process.argv[1], { id: process.argv[2] + "-" + i, kind: "task", status: "queued" }, process.env); });`;
+  const children = Array.from({ length: 6 }, (_, index) =>
+    new Promise((resolve) => spawn(process.execPath, ["--input-type=module", "-e", script, ws, `job-p${index}`], { env, stdio: "ignore" }).on("exit", resolve))
+  );
+  const codes = await Promise.all(children);
+  assert.deepEqual(codes, [0, 0, 0, 0, 0, 0]);
+  assert.equal(listJobs(ws, env).length, 30);
+});
+
+test("transitionJob enforces the from-status and keeps state and job file consistent", async () => {
+  const { transitionJob } = await import("../plugins/claude/scripts/lib/state.mjs");
+  const env = withStateDir();
+  const ws = makeTempDir();
+  upsertJob(ws, { id: "job-t", kind: "task", status: "queued" }, env);
+  writeJobFile(ws, "job-t", { id: "job-t", request: { prompt: "p" }, result: null }, env);
+  const cancelled = transitionJob(ws, "job-t", { from: ["queued", "running"], patch: { status: "cancelled" }, fileMerge: {} }, env);
+  assert.equal(cancelled.ok, true);
+  const late = transitionJob(ws, "job-t", { from: ["running"], patch: { status: "succeeded" }, fileMerge: { result: { ok: true } } }, env);
+  assert.equal(late.ok, false);
+  assert.equal(late.reason, "cancelled");
+  assert.equal(getJob(ws, "job-t", env).status, "cancelled");
+  assert.equal(readJobFile(ws, "job-t", env).status, "cancelled");
+  assert.equal(readJobFile(ws, "job-t", env).request.prompt, "p");
+});

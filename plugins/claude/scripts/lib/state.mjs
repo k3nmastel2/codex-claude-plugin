@@ -57,10 +57,33 @@ export function resolveJobLogFile(workspaceRoot, jobId, env) {
   return path.join(resolveJobsDir(workspaceRoot, env), `${jobId}.log`);
 }
 
+function tightenMode(target, mode) {
+  if (process.platform === "win32") return;
+  try {
+    fs.chmodSync(target, mode);
+  } catch {
+    // best effort: unsupported filesystems keep their defaults
+  }
+}
+
 export function ensureStateDir(workspaceRoot, env) {
-  fs.mkdirSync(resolveStateRoot(env), { recursive: true, mode: DIR_MODE });
-  fs.mkdirSync(resolveStateDir(workspaceRoot, env), { recursive: true, mode: DIR_MODE });
-  fs.mkdirSync(resolveJobsDir(workspaceRoot, env), { recursive: true, mode: DIR_MODE });
+  const dirs = [resolveStateRoot(env), resolveStateDir(workspaceRoot, env), resolveJobsDir(workspaceRoot, env)];
+  for (const dir of dirs) {
+    fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
+    tightenMode(dir, DIR_MODE);
+  }
+  // Correct files written by older versions that used the default umask.
+  for (const file of [resolveStateFile(workspaceRoot, env), ...safeReaddir(resolveJobsDir(workspaceRoot, env))]) {
+    if (fs.existsSync(file)) tightenMode(file, FILE_MODE);
+  }
+}
+
+function safeReaddir(dir) {
+  try {
+    return fs.readdirSync(dir).map((name) => path.join(dir, name));
+  } catch {
+    return [];
+  }
 }
 
 // Write through a temp file and rename so a concurrent reader never sees a half-written file.
@@ -163,18 +186,31 @@ export function upsertJob(workspaceRoot, patch, env) {
   return job;
 }
 
-// Like upsertJob, but never demotes a job that was already cancelled.
-export function finishJob(workspaceRoot, jobId, terminal, env) {
-  let job = null;
-  updateState(workspaceRoot, (state) => {
+// Every status change goes through here: one lock covers the check of the current status, the
+// state.json update, and the job-file merge, so state and job file can never disagree and a
+// cancelled job can never be revived by a worker that finishes (or starts) late.
+export function transitionJob(workspaceRoot, jobId, { from = null, patch = {}, fileMerge = null } = {}, env) {
+  return withStateLock(workspaceRoot, env, () => {
+    const state = loadState(workspaceRoot, env);
     const index = state.jobs.findIndex((entry) => entry.id === jobId);
-    const base = index === -1 ? { id: jobId, createdAt: nowIso() } : state.jobs[index];
-    const patch = base.status === "cancelled" ? { ...terminal, status: "cancelled", error: base.error ?? terminal.error } : terminal;
-    job = { ...base, ...patch, updatedAt: nowIso() };
-    if (index === -1) state.jobs.push(job);
-    else state.jobs[index] = job;
-  }, env);
-  return job;
+    if (index === -1) return { ok: false, reason: "missing", job: null };
+    const current = state.jobs[index];
+    if (from && !from.includes(current.status)) return { ok: false, reason: current.status, job: current };
+    const job = { ...current, ...patch, updatedAt: nowIso() };
+    state.jobs[index] = job;
+    if (fileMerge) {
+      const stored = readJobFile(workspaceRoot, jobId, env) ?? {};
+      writeFileAtomic(resolveJobFile(workspaceRoot, jobId, env), `${JSON.stringify({ ...stored, ...job, ...fileMerge }, null, 2)}\n`);
+    }
+    persistState(workspaceRoot, state, env);
+    return { ok: true, reason: null, job };
+  });
+}
+
+// Terminal transition that never demotes a cancelled job; returns the job as it stands afterwards.
+export function finishJob(workspaceRoot, jobId, terminal, env) {
+  const outcome = transitionJob(workspaceRoot, jobId, { from: ["queued", "running"], patch: terminal }, env);
+  return outcome.job;
 }
 
 export function listJobs(workspaceRoot, env) {

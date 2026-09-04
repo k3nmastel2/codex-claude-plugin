@@ -15,7 +15,7 @@ node "<plugin-root>/scripts/claude-companion.mjs" task [flags] -- "<prompt>"
 
 `<plugin-root>` is two directories above this SKILL.md, i.e. `<this skill's directory>/../../scripts/claude-companion.mjs`. Resolve it to an absolute path before running.
 
-Pass the user's prompt as ONE quoted argument after `--`. Never split it into separate words or flags, and never rewrite it. If the prompt contains double quotes, backticks, or `$`, use `-` as the prompt and feed the text on stdin with a heredoc instead of escaping it.
+Pass the user's prompt as ONE quoted argument after `--`. Never split it into separate words or flags, and never rewrite it. Prefer the stdin form for anything longer than one line or containing double quotes, backticks, or `$`: use `-` as the prompt and feed the text with a heredoc instead of escaping it.
 
 ## Flag mapping
 

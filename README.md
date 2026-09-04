@@ -4,7 +4,7 @@
 
 # codex-claude-plugin: use Claude Code from inside OpenAI Codex
 
-**A Codex plugin that turns Claude Code into a collaborator you can call from any Codex thread.** It drives the `claude` CLI you already have installed, so there is no API key, no proxy, and no new bill. Read-only by default. Runs on macOS, Windows, and Linux.
+**A Codex plugin that turns Claude Code into a collaborator you can call from any Codex thread.** It drives the `claude` CLI you already have installed, so no API key is required, there is no proxy, and no new bill. Read-only by default. Runs on macOS, Windows, and Linux.
 
 [![test](https://github.com/k3nmastel2/codex-claude-plugin/actions/workflows/test.yml/badge.svg)](https://github.com/k3nmastel2/codex-claude-plugin/actions/workflows/test.yml)
 [![license](https://img.shields.io/github/license/k3nmastel2/codex-claude-plugin)](LICENSE)
@@ -58,9 +58,9 @@ Codex chooses the matching skill from the description, so the `$` prefix is opti
 | `$claude-review` | Structured review of your dirty working tree, or your branch against its base. |
 | `$claude-review --adversarial --base main focus on migrations` | Claude tries to break the change, with a focus. |
 | `$claude-jobs status` · `result` · `cancel` | Manage background jobs. |
-| `$claude-setup` | Checks Node, git, the `claude` CLI, login, sandbox, and nesting. Names the one thing to fix. |
+| `$claude-setup` | Checks Node, git, the `claude` CLI, login, sandbox, and nesting. Names what to fix. |
 
-Claude's answer comes back into your Codex thread verbatim, followed by one trailer line with the session id, turn count, and cost Claude reported. Task runs can be continued with `--resume`; reviews are one-shot.
+Claude's answer comes back into your Codex thread verbatim. Successful runs end with one trailer line carrying the session id, turn count, and cost Claude reported; failures print what went wrong instead. Task runs can be continued with `--resume`; reviews are one-shot.
 
 ## Requirements
 
@@ -82,7 +82,7 @@ If you already run `claude` in a terminal, skip to step 2.
 | Windows CMD | `curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd` |
 | Homebrew | `brew install --cask claude-code` |
 | WinGet | `winget install Anthropic.ClaudeCode` |
-| npm (Node 22+) | `npm install -g @anthropic-ai/claude-code` |
+| npm | `npm install -g @anthropic-ai/claude-code` (the npm package itself requires Node 22+) |
 
 On native Windows, Anthropic recommends [Git for Windows](https://git-scm.com/downloads/win) so Claude's Bash tool works; without it Claude falls back to PowerShell.
 
@@ -107,7 +107,7 @@ Start a **new** Codex thread (skills load at thread start) and run:
 $claude-setup
 ```
 
-It reports `Ready: yes` or names the one thing to fix.
+It reports `Ready: yes` or lists what to fix.
 
 ### 3. Codex sandbox
 
@@ -124,12 +124,12 @@ The companion detects the sandbox and prints exactly this if you forget.
 
 | Flag | Claude Code flags used | Claude can |
 |---|---|---|
-| (none) | `--permission-mode dontAsk --disallowedTools Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit` | Read, search, browse. No shell, no edits, even if your own Claude settings pre-approve Bash. |
+| (none) | `--permission-mode dontAsk --disallowedTools Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit` | Read, search, browse. Claude's shell and edit tools are denied, even if your own Claude settings pre-approve Bash. |
 | `--write` | `--permission-mode acceptEdits` | Also edit files inside the workspace. |
 | `--full` | `--dangerously-skip-permissions` | Anything, including shell commands. Use in repos you trust. |
-| `--allow "<rule>"` | `--allowedTools <rule>` | Add specific tools, e.g. `--allow "Bash(npm test:*)"`. |
+| `--allow "<rule>"` | `--allowedTools <rule>` | Re-enable one tool for one pattern, e.g. `--allow "Bash(npm test:*)"`; in read-only mode that tool comes off the deny list and everything else stays denied. |
 
-Claude still loads your own Claude Code settings, hooks, and any MCP servers you have configured; read-only mode denies the shell and edit tools on top of that, it does not strip your setup. `--model` and `--effort` pass straight through. Reviews are always read-only.
+Read-only is enforced with Claude Code's own deny rules, not by sandboxing: your Claude Code settings, hooks, and MCP servers still load exactly as they do in a normal `claude` session, so a hook or MCP tool you have configured can still act. If you need stronger isolation, run Claude Code with a dedicated settings profile. `--model` and `--effort` pass straight through. Reviews are always read-only.
 
 ## How it works
 
@@ -153,7 +153,7 @@ sequenceDiagram
 - The companion spawns `claude` directly, never through a shell, and delivers the prompt on stdin by default, so large review contexts and Windows argument limits are never a problem. On Windows it finds `claude.exe` from the native installer or unwraps the npm `claude.cmd` shim to its script.
 - Reviews add `--json-schema`, so findings come back structured and are printed by severity with file and line numbers.
 - Per-repo state (last session id, job records, logs) lives under `$CODEX_HOME/claude-companion/state/`, default `~/.codex/claude-companion/state/`, created with owner-only permissions where the OS supports them.
-- Background jobs run in a detached worker; `status`, `result`, and `cancel` read the job files. Cancel sends SIGTERM then SIGKILL (or `taskkill /T` on Windows) to the recorded processes after checking they still belong to the job.
+- Background jobs run in a detached worker; `status`, `result`, and `cancel` read the job files. Cancel sends SIGTERM then SIGKILL (or `taskkill /T` on Windows) to the recorded processes, after checking the worker's command line still names this job and the Claude child still looks like a `claude -p` run; on Windows only the image name can be checked.
 - Every run appends a short system prompt telling Claude it was invoked by Codex, that nobody can answer questions, and that it must not delegate back.
 
 ## Codex and Claude Code together

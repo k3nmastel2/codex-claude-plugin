@@ -12,8 +12,9 @@ const git = (cwd, ...args) => {
   return r.stdout;
 };
 
-test("non-git directories are rejected", () => {
+test("non-git directories are rejected, but a bad scope is reported first", () => {
   assert.throws(() => resolveReviewTarget(makeTempDir()), /Not a git repository/);
+  assert.throws(() => resolveReviewTarget(makeTempDir(), { scope: "bogus" }), /Unsupported --scope/);
 });
 
 test("dirty tree resolves to working-tree and includes diff plus untracked text", () => {

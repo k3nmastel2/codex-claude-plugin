@@ -64,7 +64,14 @@ export function buildClaudeArgs(options = {}) {
     throw new Error(`Unsupported effort "${options.effort}". Use one of: ${VALID_EFFORTS.join(", ")}.`);
   }
   const args = ["-p", "--output-format", "json"];
-  if (permission === "read") args.push("--permission-mode", "dontAsk", "--disallowedTools", READ_ONLY_DISALLOWED);
+  if (permission === "read") {
+    // Deny rules beat allow rules, so any tool the caller explicitly allows (e.g. --allow "Bash(npm test:*)")
+    // is taken off the deny list; dontAsk still rejects every use of it outside the allowed pattern.
+    const allowedBases = new Set((options.allow ?? []).map((rule) => String(rule).replace(/\(.*$/, "").trim()));
+    const disallowed = READ_ONLY_DISALLOWED.split(",").filter((tool) => !allowedBases.has(tool));
+    args.push("--permission-mode", "dontAsk");
+    if (disallowed.length) args.push("--disallowedTools", disallowed.join(","));
+  }
   if (permission === "write") args.push("--permission-mode", "acceptEdits");
   if (permission === "full") args.push("--dangerously-skip-permissions");
   if (options.allow?.length) args.push("--allowedTools", options.allow.join(","));

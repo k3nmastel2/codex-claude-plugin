@@ -52,12 +52,13 @@ export function detectBaseRef(cwd) {
 }
 
 export function resolveReviewTarget(cwd, options = {}) {
-  if (!isGitRepository(cwd)) {
-    throw new Error(`Not a git repository: ${cwd}`);
-  }
   const scope = options.scope ?? "auto";
+  // Validate options before touching the repository so a typo is reported even outside git.
   if (!REVIEW_SCOPES.includes(scope)) {
     throw new Error(`Unsupported --scope "${scope}". Use one of: ${REVIEW_SCOPES.join(", ")}.`);
+  }
+  if (!isGitRepository(cwd)) {
+    throw new Error(`Not a git repository: ${cwd}`);
   }
   const explicitBase = options.base ?? null;
   const wantsBranch = scope === "branch" || (scope === "auto" && (explicitBase || !isDirty(cwd)));
@@ -95,18 +96,26 @@ function listStatusFiles(porcelainZ) {
 // workspace; symlinks are skipped so a review can never pull in ~/.ssh or similar.
 function collectUntracked(cwd, maxUntrackedBytes) {
   const root = fs.realpathSync.native(cwd);
+  const noFollow = fs.constants.O_NOFOLLOW ?? 0;
   const blocks = [];
   for (const relative of splitNul(gitOut(cwd, ["ls-files", "-z", "--others", "--exclude-standard"]))) {
     const absolute = path.join(cwd, relative);
     let buffer;
+    let fd;
     try {
-      const stat = fs.lstatSync(absolute);
+      if (fs.lstatSync(absolute).isSymbolicLink()) continue;
+      // Open without following symlinks and fstat the open descriptor, so the path cannot be
+      // swapped for a link between the check and the read.
+      fd = fs.openSync(absolute, fs.constants.O_RDONLY | noFollow);
+      const stat = fs.fstatSync(fd);
       if (!stat.isFile() || stat.size > maxUntrackedBytes) continue;
       const real = fs.realpathSync.native(absolute);
       if (real !== root && !real.startsWith(root + path.sep)) continue;
-      buffer = fs.readFileSync(absolute);
+      buffer = fs.readFileSync(fd);
     } catch {
       continue;
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
     }
     if (!isProbablyText(buffer)) continue;
     blocks.push(`=== untracked: ${relative} ===\n${buffer.toString("utf8")}`);
