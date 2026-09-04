@@ -184,8 +184,8 @@ JSON, otherwise reports malformed output and prints the raw text.
 - Failures: one actionable line, then up to 20 trimmed stderr lines. Exit code 1.
 
 `--json` prints the full payload:
-`{ ok, command, cwd, sessionId, model, numTurns, costUsd, durationMs, result,
-structuredOutput, permissionDenials, job, error, stderr }`.
+`{ ok, command, cwd, jobId, sessionId, numTurns, costUsd, durationMs, result,
+structuredOutput, permissionDenials, targetLabel, error, stderr }`.
 
 ## Permissions and safety
 
