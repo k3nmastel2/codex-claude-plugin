@@ -86,7 +86,12 @@ export async function executeJob(workspaceRoot, jobId, env = process.env) {
     prompt: request.prompt,
     claudeArgs: request.claudeArgs,
     timeoutMs: request.timeoutMs ?? 0,
-    onSpawn: (pid) => transitionJob(workspaceRoot, jobId, { from: ["running"], patch: { pid } }, env)
+    // Record the child unconditionally; if a cancel landed between "running" and this point,
+    // take the child down right here so it cannot outlive the cancellation.
+    onSpawn: (pid) => {
+      const recorded = transitionJob(workspaceRoot, jobId, { patch: { pid } }, env);
+      if (recorded.job?.status === "cancelled") terminateProcessTree(pid, { graceMs: 300 });
+    }
   });
 
   const { envelope } = parseResultEnvelope(run.stdout);
@@ -163,7 +168,8 @@ export function cancelJob(workspaceRoot, jobId, env = process.env) {
     fileMerge: {}
   }, env);
   if (!outcome.ok) return { ok: false, job: outcome.job, message: `Job ${jobId} is already ${outcome.reason}.` };
-  const reports = [terminateIfOurs(existing.pid, "claude", jobId), terminateIfOurs(existing.workerPid, "worker", jobId)];
+  // Signal the PIDs as they stood under the lock, not the snapshot read before it.
+  const reports = [terminateIfOurs(outcome.job.pid, "claude", jobId), terminateIfOurs(outcome.job.workerPid, "worker", jobId)];
   const delivered = reports.some((report) => report.delivered);
   const skipped = reports.some((report) => report.skipped);
   const message = delivered

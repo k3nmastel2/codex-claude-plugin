@@ -140,3 +140,26 @@ test("transitionJob enforces the from-status and keeps state and job file consis
   assert.equal(readJobFile(ws, "job-t", env).status, "cancelled");
   assert.equal(readJobFile(ws, "job-t", env).request.prompt, "p");
 });
+
+test("permission tightening never follows a symlink planted in the jobs directory", { skip: process.platform === "win32" }, async () => {
+  const { ensureStateDir, resolveJobsDir } = await import("../plugins/claude/scripts/lib/state.mjs");
+  const env = withStateDir();
+  const ws = makeTempDir();
+  ensureStateDir(ws, env);
+  const outside = path.join(makeTempDir(), "victim.txt");
+  fs.writeFileSync(outside, "x", { mode: 0o644 });
+  fs.symlinkSync(outside, path.join(resolveJobsDir(ws, env), "planted.json"));
+  ensureStateDir(ws, env);
+  assert.equal(fs.statSync(outside).mode & 0o777, 0o644, "target mode must be untouched");
+});
+
+test("a pid recorded after cancellation is still stored on the job", async () => {
+  const { transitionJob } = await import("../plugins/claude/scripts/lib/state.mjs");
+  const env = withStateDir();
+  const ws = makeTempDir();
+  upsertJob(ws, { id: "job-late", kind: "task", status: "cancelled" }, env);
+  const recorded = transitionJob(ws, "job-late", { patch: { pid: 4242 } }, env);
+  assert.equal(recorded.ok, true);
+  assert.equal(recorded.job.status, "cancelled");
+  assert.equal(getJob(ws, "job-late", env).pid, 4242);
+});

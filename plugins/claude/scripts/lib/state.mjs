@@ -72,9 +72,16 @@ export function ensureStateDir(workspaceRoot, env) {
     fs.mkdirSync(dir, { recursive: true, mode: DIR_MODE });
     tightenMode(dir, DIR_MODE);
   }
-  // Correct files written by older versions that used the default umask.
+  // Correct files written by older versions that used the default umask. Only regular files:
+  // never follow a symlink someone may have planted in the state directory.
   for (const file of [resolveStateFile(workspaceRoot, env), ...safeReaddir(resolveJobsDir(workspaceRoot, env))]) {
-    if (fs.existsSync(file)) tightenMode(file, FILE_MODE);
+    let stat;
+    try {
+      stat = fs.lstatSync(file);
+    } catch {
+      continue;
+    }
+    if (stat.isFile()) tightenMode(file, FILE_MODE);
   }
 }
 

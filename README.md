@@ -4,7 +4,7 @@
 
 # codex-claude-plugin: use Claude Code from inside OpenAI Codex
 
-**A Codex plugin that turns Claude Code into a collaborator you can call from any Codex thread.** It drives the `claude` CLI you already have installed, so no API key is required, there is no proxy, and no new bill. Read-only by default. Runs on macOS, Windows, and Linux.
+**A Codex plugin that turns Claude Code into a collaborator you can call from any Codex thread.** It drives the `claude` CLI you already have installed, so no API key is required, there is no proxy, and nothing to pay beyond what your Claude Code account already charges. Read-only by default. Runs on macOS, Windows, and Linux.
 
 [![test](https://github.com/k3nmastel2/codex-claude-plugin/actions/workflows/test.yml/badge.svg)](https://github.com/k3nmastel2/codex-claude-plugin/actions/workflows/test.yml)
 [![license](https://img.shields.io/github/license/k3nmastel2/codex-claude-plugin)](LICENSE)
@@ -127,7 +127,7 @@ The companion detects the sandbox and prints exactly this if you forget.
 | (none) | `--permission-mode dontAsk --disallowedTools Bash,PowerShell,Edit,Write,MultiEdit,NotebookEdit` | Read, search, browse. Claude's shell and edit tools are denied, even if your own Claude settings pre-approve Bash. |
 | `--write` | `--permission-mode acceptEdits` | Also edit files inside the workspace. |
 | `--full` | `--dangerously-skip-permissions` | Anything, including shell commands. Use in repos you trust. |
-| `--allow "<rule>"` | `--allowedTools <rule>` | Re-enable one tool for one pattern, e.g. `--allow "Bash(npm test:*)"`; in read-only mode that tool comes off the deny list and everything else stays denied. |
+| `--allow "<rule>"` | `--allowedTools <rule>` | Re-enable one tool for one pattern, e.g. `--allow "Bash(npm test:*)"`. In read-only mode that tool comes off the deny list, which also lets any allow rule for it in your own Claude settings apply again; everything else stays denied. |
 
 Read-only is enforced with Claude Code's own deny rules, not by sandboxing: your Claude Code settings, hooks, and MCP servers still load exactly as they do in a normal `claude` session, so a hook or MCP tool you have configured can still act. If you need stronger isolation, run Claude Code with a dedicated settings profile. `--model` and `--effort` pass straight through. Reviews are always read-only.
 
@@ -153,7 +153,7 @@ sequenceDiagram
 - The companion spawns `claude` directly, never through a shell, and delivers the prompt on stdin by default, so large review contexts and Windows argument limits are never a problem. On Windows it finds `claude.exe` from the native installer or unwraps the npm `claude.cmd` shim to its script.
 - Reviews add `--json-schema`, so findings come back structured and are printed by severity with file and line numbers.
 - Per-repo state (last session id, job records, logs) lives under `$CODEX_HOME/claude-companion/state/`, default `~/.codex/claude-companion/state/`, created with owner-only permissions where the OS supports them.
-- Background jobs run in a detached worker; `status`, `result`, and `cancel` read the job files. Cancel sends SIGTERM then SIGKILL (or `taskkill /T` on Windows) to the recorded processes, after checking the worker's command line still names this job and the Claude child still looks like a `claude -p` run; on Windows only the image name can be checked.
+- Background jobs run in a detached worker; `status`, `result`, and `cancel` read the job files. Cancel tries to stop the recorded processes with SIGTERM then SIGKILL (or `taskkill /T` on Windows), after checking the worker's command line still names this job and the Claude child still looks like a `claude -p` run; on Windows only the image name can be checked.
 - Every run appends a short system prompt telling Claude it was invoked by Codex, that nobody can answer questions, and that it must not delegate back.
 
 ## Codex and Claude Code together
@@ -185,7 +185,7 @@ A typical round trip: Codex drafts, `$claude-review --adversarial` challenges it
 
 **Does this send my code anywhere new?** No. Claude Code sends your prompt and the files it reads to Anthropic exactly as it does when you run `claude` yourself. Codex never sees Claude's credentials, and this plugin has no server, telemetry, or network calls of its own.
 
-**What does it cost?** Whatever your Claude Code account already charges for a session. The trailer line after every run shows the cost Claude reported. Pass `--model haiku` for cheap plumbing checks and `--max-budget-usd` to cap a run.
+**What does it cost?** Whatever your Claude Code account already charges for a session. The trailer line after every successful run shows the cost Claude reported. Pass `--model haiku` for cheap plumbing checks and `--max-budget-usd` to cap a run.
 
 **Can Claude and Codex go back and forth on their own?** By design, only one hop per request. This plugin refuses to run when it detects it is already inside a Claude Code session and enforces a depth limit. Deliberate multi-hop chains can raise `CLAUDE_COMPANION_MAX_DEPTH` and pass `--allow-nested`, but you should be the one orchestrating.
 

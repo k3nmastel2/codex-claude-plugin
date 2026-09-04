@@ -111,6 +111,10 @@ function collectUntracked(cwd, maxUntrackedBytes) {
       if (!stat.isFile() || stat.size > maxUntrackedBytes) continue;
       const real = fs.realpathSync.native(absolute);
       if (real !== root && !real.startsWith(root + path.sep)) continue;
+      // The descriptor must be the very file that lives at the resolved path (guards against an
+      // intermediate directory being swapped for a link between the open and the realpath).
+      const atPath = fs.statSync(real);
+      if (atPath.ino !== stat.ino || atPath.dev !== stat.dev) continue;
       buffer = fs.readFileSync(fd);
     } catch {
       continue;

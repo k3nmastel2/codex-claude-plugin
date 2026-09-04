@@ -21,7 +21,7 @@ Pass the user's prompt as ONE quoted argument after `--`. Never split it into se
 
 Flags go before `--`, each as its own argument.
 
-- Default is read-only: Claude can read and search but cannot edit files or run commands.
+- Default is read-only: Claude's edit and shell tools are denied, so it can read and search but not change files or run commands. The user's own Claude Code hooks and MCP servers still load.
 - `--write` when the user wants Claude to change files.
 - `--full` when the user wants Claude to also run commands or tests, or says "full access". Warn once that this skips every permission check.
 - `--allow "<rule>"` (repeatable) to allow specific tools, e.g. `--allow "Bash(npm test:*)"`.
